@@ -309,7 +309,8 @@ def check_conflicts(new_record: dict, existing_records: list) -> tuple[str, list
 # ═══════════════════════════════════════════════════════════════════
 
 def build_report_html(res, event_start_date, patrol, unit, unit_type,
-                      auditor, is_spare=False, primary_unit=""):
+                      auditor, is_spare=False, primary_unit="",
+                      continues_to_next_form=False):
     generated_at = datetime.now().strftime("%B %d, %Y at %H:%M:%S")
     circuit_rows = res["circuit_rows"]
     gap_rows     = res["gap_rows"]
@@ -409,13 +410,25 @@ def build_report_html(res, event_start_date, patrol, unit, unit_type,
             f"attributed to <strong>{primary_unit}</strong>'s benchmark total.</div>\n"
         )
 
+    continues_html = ""
+    if continues_to_next_form:
+        continues_html = (
+            "<div style='background:#e8f4fd;border-left:5px solid #1976d2;"
+            "padding:10px 14px;margin:10px 0;border-radius:3px'>"
+            "ℹ️ <strong>Continues to Next Form:</strong> This form's winter event continues on "
+            "the next day's form. Refuel allowance is deferred — it will be recorded on the "
+            "continuation form.</div>\n"
+        )
+
     bd_html = ""
     bd_rows = [("Circuit operating time", f"{total_circuit_minutes // 60}h {total_circuit_minutes % 60:02d}m", f"{total_circuit_minutes / 60:.2f} hrs")]
     if total_gap_operating:
         bd_rows.append(("Inter-circuit gap (operating, per contract cap)", f"+{total_gap_operating // 60}h {total_gap_operating % 60:02d}m", f"+{total_gap_operating / 60:.2f} hrs"))
     if total_gap_nonoperating:
         bd_rows.append(("Inter-circuit gap (excluded — non-operating)", f"−{total_gap_nonoperating // 60}h {total_gap_nonoperating % 60:02d}m", f"−{total_gap_nonoperating / 60:.2f} hrs"))
-    if refuel_minutes:
+    if continues_to_next_form and refuel_minutes == 0:
+        bd_rows.append(("End-of-event refuel", "(deferred to next form)", "—"))
+    elif refuel_minutes:
         _n_evts = 1 + res.get("intra_form_new_events", 0)
         _base_r = refuel_minutes // _n_evts if _n_evts > 1 else refuel_minutes
         _ref_label = (
@@ -465,7 +478,7 @@ def build_report_html(res, event_start_date, patrol, unit, unit_type,
   </div>
 </div>
 <div class="page">
-{overnight_html}{spare_html}
+{overnight_html}{spare_html}{continues_html}
 <h2>Contract Rules Applied</h2>
 <ol style="line-height:2">
   <li>The Contractor is eligible for <strong>up to 1 hour</strong> of time between circuits to be counted
@@ -680,9 +693,11 @@ def _compute_chain_hours(chain: list) -> dict:
 
     # Derive per-event refuel from last record (handles both old and new saves)
     _last_rec = chain[-1]
-    _n_events_last = 1 + _last_rec.get("intra_form_new_events", 0)
-    _total_refuel_last = _last_rec.get("refuel_minutes", 30)
-    base_refuel = (_total_refuel_last // _n_events_last) if _n_events_last > 0 else 30
+    _continues = _last_rec.get("continues_to_next_form", False)
+    _intra = _last_rec.get("intra_form_new_events", 0)
+    _n_completed = _intra + (0 if _continues else 1)
+    _total_refuel = _last_rec.get("refuel_minutes", 0 if _continues else 30)
+    base_refuel = (_total_refuel // _n_completed) if _n_completed > 0 else 0
 
     gap_operating_min = 0
     intra_form_refuels = 0
@@ -694,7 +709,7 @@ def _compute_chain_hours(chain: list) -> dict:
             continue
         gap_operating_min += min(max(gap, 0), 60)
 
-    end_refuel = base_refuel if _total_refuel_last > 0 else 0
+    end_refuel = base_refuel if (not _continues and _total_refuel > 0) else 0
     has_overnight = (max(c["e"] // 1440 for c in seq) > min(c["s"] // 1440 for c in seq))
     total_operating_min = total_circuit_min + gap_operating_min + intra_form_refuels + end_refuel
 
@@ -720,10 +735,12 @@ def _attribute_chain_hours(chain: list) -> dict:
 
     # Derive per-event refuel (matches _compute_chain_hours logic)
     _last_rec = chain[-1]
-    _n_events_last = 1 + _last_rec.get("intra_form_new_events", 0)
-    _total_refuel_last = _last_rec.get("refuel_minutes", 30)
-    base_refuel = (_total_refuel_last // _n_events_last) if _n_events_last > 0 else 30
-    end_refuel = base_refuel if _total_refuel_last > 0 else 0
+    _continues = _last_rec.get("continues_to_next_form", False)
+    _intra = _last_rec.get("intra_form_new_events", 0)
+    _n_completed = _intra + (0 if _continues else 1)
+    _total_refuel = _last_rec.get("refuel_minutes", 0 if _continues else 30)
+    base_refuel = (_total_refuel // _n_completed) if _n_completed > 0 else 0
+    end_refuel = base_refuel if (not _continues and _total_refuel > 0) else 0
 
     attributed: dict = {}
     for item in seq:
@@ -831,6 +848,7 @@ def _record_to_report_result(record: dict) -> dict:
         "total_gap_nonoperating":  total_gap_nonoperating,
         "refuel_minutes":          refuel_minutes,
         "intra_form_new_events":   intra_form_new_events,
+        "continues_to_next_form":  record.get("continues_to_next_form", False),
         "total_operating":         total_operating,
         "has_overnight":           max_day_offset > 0,
         "max_day_offset":          max_day_offset,
@@ -1220,6 +1238,11 @@ with tab_entry:
             st.caption("Capped at 30 min.")
         refuel_minutes = min(raw_refuel, 30)
 
+    continues_to_next_form = st.checkbox(
+        "This form continues on the next day's form (refuel will be counted on the next form)",
+        key="sa_continues",
+    )
+
     # ── Calculate ─────────────────────────────────────────────────────
     st.divider()
     if st.button("▶ Calculate Operating Hours", type="primary", key="sa_calc"):
@@ -1363,7 +1386,10 @@ with tab_entry:
             st.session_state.sa_calc_results = {"errors": errors}
         else:
             base_refuel_per_event = refuel_minutes   # per-event allowance from widget (≤30 min)
-            refuel_minutes = base_refuel_per_event * (1 + intra_form_new_events)
+            # completed_events = events that truly ended on this form
+            # If base_refuel_per_event=0 (unchecked), refuel_minutes stays 0 regardless of continues
+            completed_events = intra_form_new_events + (0 if continues_to_next_form else 1)
+            refuel_minutes = base_refuel_per_event * completed_events
             total_operating = total_circuit_minutes + total_gap_operating + refuel_minutes
             max_day_offset  = max((r["day_offset"] for r in circuit_rows), default=0)
             tow_plow_used   = any(c.get("tow_plow") for c in st.session_state.sa_circuits)
@@ -1384,6 +1410,7 @@ with tab_entry:
                 "total_gap_nonoperating":  total_gap_nonoperating,
                 "refuel_minutes":          refuel_minutes,
                 "intra_form_new_events":   intra_form_new_events,
+                "continues_to_next_form":  continues_to_next_form,
                 "total_operating":         total_operating,
                 "has_overnight":           max_day_offset > 0,
                 "max_day_offset":          max_day_offset,
@@ -1437,7 +1464,9 @@ with tab_entry:
             bd = [("Circuit operating time", fmt_hhmm(total_circuit_minutes))]
             if total_gap_operating:    bd.append(("Inter-circuit gap (operating)", f"+{fmt_hhmm(total_gap_operating)}"))
             if total_gap_nonoperating: bd.append(("Inter-circuit gap (excluded)", f"−{fmt_hhmm(total_gap_nonoperating)}"))
-            if refuel_minutes:
+            if res.get("continues_to_next_form") and refuel_minutes == 0:
+                bd.append(("End-of-event refuel", "*(deferred to next form)*"))
+            elif refuel_minutes:
                 _n_evts = 1 + res.get("intra_form_new_events", 0)
                 _base_r = refuel_minutes // _n_evts if _n_evts > 1 else refuel_minutes
                 _ref_label = (
@@ -1518,6 +1547,7 @@ with tab_entry:
                         ],
                         "refuel_minutes":          res["refuel_minutes"],
                         "intra_form_new_events":   res.get("intra_form_new_events", 0),
+                        "continues_to_next_form":  res.get("continues_to_next_form", False),
                         "total_circuit_minutes":   res["total_circuit_minutes"],
                         "total_gap_operating":     res["total_gap_operating"],
                         "total_gap_nonoperating":  res["total_gap_nonoperating"],
@@ -1648,6 +1678,7 @@ with tab_entry:
                         auditor.strip() or "—",
                         is_spare=is_spare,
                         primary_unit=primary_unit_number,
+                        continues_to_next_form=res.get("continues_to_next_form", False),
                     ),
                     file_name=f"audit_{safe_unit}_{safe_route}_{event_start_date}.html",
                     mime="text/html",
@@ -1670,6 +1701,7 @@ with tab_entry:
                     ]
                     st.session_state.sa_calc_results  = None
                     st.session_state.sa_conflict_state = None
+                    st.session_state["sa_continues"]  = False
                     st.session_state.sa_prev_time_mode = st.session_state.sa_time_mode
                     st.rerun()
 
@@ -1930,6 +1962,7 @@ with tab_analytics:
                                 _tab2_auditor.strip() or "Auditor",
                                 is_spare=_rec.get("is_spare", False),
                                 primary_unit=_rec.get("primary_unit_number") or "",
+                                continues_to_next_form=_rr.get("continues_to_next_form", False),
                             ),
                             file_name=f"audit_{_su}_{_sr}_{_rec['start_date']}.html",
                             mime="text/html",
@@ -1987,6 +2020,7 @@ with tab_analytics:
                                 st.session_state["sa_is_spare"]     = _erec.get("is_spare", False)
                                 st.session_state["sa_primary_unit"] = _erec.get("primary_unit_number", "")
                                 st.session_state["sa_refuel_cb"]    = _base_ref > 0
+                                st.session_state["sa_continues"]    = _erec.get("continues_to_next_form", False)
                                 if _base_ref > 0:
                                     st.session_state["sa_refuel_min"] = _base_ref
                                 _ut = _erec.get("unit_type", "")
@@ -2520,11 +2554,6 @@ with tab_analytics:
                 _contractor_min = sum(r.get("total_operating_minutes", 0) for r in _oc_chain)
                 _audited_min    = _ch["total_operating_min"]
                 _excess_min     = max(0, _contractor_min - _audited_min)
-                _has_wide = any(
-                    r.get("unit_type", "") in TOWING_TYPES or r.get("tow_plow_used", False)
-                    for r in _oc_chain
-                )
-                _rate = 100 if _has_wide else 75
                 _all_dates   = [date.fromisoformat(r["start_date"]) for r in _oc_chain]
                 _chain_first = min(_all_dates)
                 _last_r      = _oc_chain[-1]
@@ -2546,8 +2575,6 @@ with tab_analytics:
                     "Contractor Claimed Hrs": round(_contractor_min / 60, 2),
                     "Audited Hrs":            round(_audited_min / 60, 2),
                     "Excess Hrs":             round(_excess_min / 60, 2),
-                    "Risk Rate":              f"${_rate}/hr",
-                    "Excess $":               round((_excess_min / 60) * _rate, 2),
                 })
 
         if not _oc_rows:
@@ -2557,12 +2584,10 @@ with tab_analytics:
             _n_overclaim = int((_oc_df["Excess Hrs"] > 0).sum())
             st.caption(f"{len(_oc_df)} unit-chain(s) · {_n_overclaim} unit-chain(s) with overclaim")
             st.dataframe(_oc_df, hide_index=True, use_container_width=True)
-            _om1, _om2, _om3 = st.columns(3)
+            _om1, _om2 = st.columns(2)
             with _om1:
                 st.metric("Total Excess Hours",    f"{_oc_df['Excess Hrs'].sum():.2f} hrs")
             with _om2:
-                st.metric("Total Overclaim Value", f"${_oc_df['Excess $'].sum():,.2f}")
-            with _om3:
                 st.metric("Unit-Chains with Overclaim", str(_n_overclaim))
             st.download_button(
                 "⬇ Download Overclaim Report CSV",
