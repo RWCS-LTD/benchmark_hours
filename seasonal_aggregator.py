@@ -84,6 +84,7 @@ def get_github_config():
         return {
             "token":     st.secrets["github"]["token"],
             "repo":      st.secrets["github"]["repo"],
+            "data_repo": st.secrets["github"].get("data_repo", st.secrets["github"]["repo"]),
             "branch":    st.secrets["github"].get("branch", "main"),
             "data_path": st.secrets["github"].get("data_path", "data/season_cache.json"),
         }
@@ -103,7 +104,7 @@ def load_cache(config) -> tuple:
         "Accept": "application/vnd.github.v3+json",
     }
     url = (
-        f"https://api.github.com/repos/{config['repo']}"
+        f"https://api.github.com/repos/{config['data_repo']}"
         f"/contents/{config['data_path']}?ref={config['branch']}"
     )
     try:
@@ -132,7 +133,7 @@ def load_benchmarks(config) -> tuple:
         "Accept": "application/vnd.github.v3+json",
     }
     url = (
-        f"https://api.github.com/repos/{config['repo']}"
+        f"https://api.github.com/repos/{config['data_repo']}"
         f"/contents/{BENCHMARKS_PATH}?ref={config['branch']}"
     )
     try:
@@ -160,7 +161,7 @@ def save_benchmarks(config, data: dict, sha) -> str | None:
         "Accept": "application/vnd.github.v3+json",
     }
     url = (
-        f"https://api.github.com/repos/{config['repo']}"
+        f"https://api.github.com/repos/{config['data_repo']}"
         f"/contents/{BENCHMARKS_PATH}"
     )
     content_b64 = base64.b64encode(
@@ -194,7 +195,7 @@ def push_cache(config, records: list, sha, commit_message: str) -> str | None:
         "Accept": "application/vnd.github.v3+json",
     }
     url = (
-        f"https://api.github.com/repos/{config['repo']}"
+        f"https://api.github.com/repos/{config['data_repo']}"
         f"/contents/{config['data_path']}"
     )
 
