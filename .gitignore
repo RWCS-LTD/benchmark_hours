@@ -1,0 +1,16 @@
+venv/
+__pycache__/
+*.pyc
+
+# Contract data — configure via Streamlit Secrets, never commit
+benchmarks.json
+.streamlit/secrets.toml
+
+# Local data cache
+season_cache.json
+data/
+*.csv
+*.log
+
+# Documents
+*.pdf
