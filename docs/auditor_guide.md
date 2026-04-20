@@ -55,6 +55,8 @@ The contract allows up to **30 minutes** at the end of a winter event for unload
 
 The tool will never count more than 30 minutes here, regardless of what you enter.
 
+**If this form continues on the next day's form:** Check the box labelled _"This form continues on the next day's form (refuel will be counted on the next form)"_. When checked, the refuel allowance is not added to this form — it will be recorded on the continuation form instead. The audit report will show a "Continues to Next Form" notice and a deferred refuel line in the breakdown so the record is clear.
+
 ---
 
 ### Step 3 — Calculate
@@ -200,5 +202,6 @@ Yes, for HHMM and HH:MM formats, always use two digits for both hours and minute
 
 | Date | Change |
 |------|--------|
-| 2026-04 | Time entry format toggle added: choose between HHMM, HH:MM, or separate H/M boxes. Default is HHMM. New Calculation button now fully clears all fields including Unit ID and Auditor Name. Add Circuit button now reliably initialises fresh fields without requiring a browser refresh. |
+| 2026-04 | "Continues to next form" checkbox added — defers end-of-event refuel to the continuation form. Audit report shows a banner and explicit deferred-refuel line when checked. Overclaim Report simplified: dollar-rate columns removed, excess hours only. Chain-level refuel calculation updated to handle continues flag correctly. |
+| 2026-04 | Time entry format toggle added: choose between HHMM, HH:MM, or separate H/M boxes. Default is HHMM. New Form button fully clears all fields. Add Circuit button reliably initialises fresh fields without requiring a browser refresh. |
 | 2026-04 | Initial release — circuit entry, overnight detection, gap analysis, HTML audit report download. |
