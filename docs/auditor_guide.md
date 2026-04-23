@@ -178,14 +178,15 @@ Common for fragmented contractor forms. Two buttons — **Cancel** or **Confirm 
 
 Flagged records appear in the **Conflicts & Flags** view in the Cache Viewer, and any injected anomaly strings also appear in the **Anomaly Log** view — both with a legend explaining every flag type.
 
+**Both sides of a conflict are flagged.** When you save a second form that triggers a duplicate, overlap, or same-day prompt, the existing record you were conflicting with is tagged with the same flag and gets a counterpart anomaly pointing back at the new record. That way Conflicts & Flags shows both forms, not just the newer one. Records that were saved before this behavior was introduced can be retroactively tagged with the **🔍 Rescan cache for conflicts** button at the top of the Conflicts & Flags view.
+
 ---
 
 ## Cache Viewer — Finding and Deleting Records
 
 The Cache Viewer (**📊 Cache Viewer & Analytics** tab) shows every saved record with filters for Patrol, Unit, Route, and date range. Two features help locate records when duplicates or conflicts need reconciling:
 
-- **ID column in the Submissions Table.** Every row displays the record's short ID (first 8 chars of the UUID). The full ID is used when looking a record up by the identifier shown in a conflict prompt.
-- **Find by ID filter.** A text box under the main filters accepts a full UUID or any prefix (e.g. `50cb1eb1`). Matching is case-insensitive.
+- **ID column in the Submissions Table.** Every row displays the record's short ID (first 8 chars of the UUID). Sort the table by the ID column to group matching short IDs together if you need to locate a record by the identifier shown in a conflict prompt.
 
 ### Deleting a record
 
@@ -258,7 +259,8 @@ Yes, for HHMM and HH:MM formats, always use two digits for both hours and minute
 | Date | Change |
 |------|--------|
 | 2026-04 | Duplicate-detection buttons added: **✅ Accept Both Entries** and **🔁 Replace Existing Entry** (password-protected) — previously the only option was Cancel. Both actions inject an anomaly string naming the counterpart record's short ID so the audit trail is preserved. New flag types `duplicate_confirmed` and `duplicate_replaced` are now listed in the Conflicts & Flags legend. |
-| 2026-04 | Cache Viewer: **ID column** added to the Submissions Table (first 8 chars of each record's UUID). **Find by ID** text filter added under the main filter row — accepts full UUID or any prefix, case-insensitive. |
+| 2026-04 | Cache Viewer: **ID column** added to the Submissions Table (first 8 chars of each record's UUID). |
+| 2026-04 | Conflict saves now flag **both sides** — when a duplicate, overlap, or same-day conflict is confirmed by the auditor, both the new record and the existing counterpart record receive the matching `*_confirmed` flag and an anomaly pointing back at each other. New **🔍 Rescan cache for conflicts** button in the Conflicts & Flags view walks the full cache and retroactively tags any pair that slipped through before this behavior existed. |
 | 2026-04 | Submissions Table is now a contained, scrollable grid with native **single-row selection**. Click a row to select it, then use the password-protected **🗑 Delete this record** control directly below (password: `benchmark`). Supports thousands of records without flooding the page. The old "Delete a Record" expander and dropdown-picker are removed. |
 | 2026-04 | "Continues to next form" checkbox added — defers end-of-event refuel to the continuation form. Audit report shows a banner and explicit deferred-refuel line when checked. Overclaim Report simplified: dollar-rate columns removed, excess hours only. Chain-level refuel calculation updated to handle continues flag correctly. |
 | 2026-04 | Time entry format toggle added: choose between HHMM, HH:MM, or separate H/M boxes. Default is HHMM. New Form button fully clears all fields. Add Circuit button reliably initialises fresh fields without requiring a browser refresh. |

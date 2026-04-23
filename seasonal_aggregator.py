@@ -307,6 +307,77 @@ def check_conflicts(new_record: dict, existing_records: list) -> tuple[str, list
     return "none", []
 
 
+def rescan_conflicts(records: list) -> tuple[list, int]:
+    """
+    Walk all records pairwise, detect conflicts, and tag both sides of any
+    pair that isn't already flagged. Returns (updated_records, n_updated).
+
+    O(N^2) — fine for thousands; the per-pair work is only date/window math.
+    Skips pairs whose either record lacks an id.
+    """
+    updated = [dict(r) for r in records]
+    by_idx = {i: updated[i] for i in range(len(updated))}
+    changed = {i: False for i in range(len(updated))}
+
+    for i in range(len(updated)):
+        a = by_idx[i]
+        if not a.get("id"):
+            continue
+        for j in range(i + 1, len(updated)):
+            b = by_idx[j]
+            if not b.get("id"):
+                continue
+            if a.get("unit_number") != b.get("unit_number"):
+                continue
+            try:
+                a_base = date.fromisoformat(a["start_date"])
+                b_base = date.fromisoformat(b["start_date"])
+            except Exception:
+                continue
+            a_end = a_base + timedelta(days=a.get("max_day_offset", 0))
+            b_end = b_base + timedelta(days=b.get("max_day_offset", 0))
+            if a_base > b_end or a_end < b_base:
+                continue
+            try:
+                a_wins = _circuit_absolute_windows(a)
+                b_wins = _circuit_absolute_windows(b)
+            except Exception:
+                continue
+            a_starts = {w[0] for w in a_wins}
+            b_starts = {w[0] for w in b_wins}
+
+            if a_starts & b_starts:
+                flag = "duplicate_confirmed"
+                anom_tmpl = "⚠️ Duplicate (rescan) — coexists with id {sid}"
+            elif any(an_s < be and an_e > bs
+                     for an_s, an_e in a_wins
+                     for bs, be in b_wins):
+                flag = "overlap_confirmed"
+                anom_tmpl = "⚠️ Time overlap (rescan) with id {sid}"
+            else:
+                flag = "multiple_same_day"
+                anom_tmpl = "ℹ️ Multiple forms same unit/day (rescan) — see id {sid}"
+
+            for tgt_idx, other in ((i, b), (j, a)):
+                tgt = by_idx[tgt_idx]
+                other_short = (other.get("id", "") or "")[:8] + "…"
+                msg = anom_tmpl.format(sid=other_short)
+                dirty = False
+                if tgt.get("conflict_status") in (None, "", "clean"):
+                    tgt["conflict_status"] = flag
+                    dirty = True
+                anoms = list(tgt.get("anomalies") or [])
+                if msg not in anoms:
+                    anoms.append(msg)
+                    tgt["anomalies"] = anoms
+                    dirty = True
+                if dirty:
+                    changed[tgt_idx] = True
+
+    n_updated = sum(1 for v in changed.values() if v)
+    return updated, n_updated
+
+
 # ═══════════════════════════════════════════════════════════════════
 # HTML Report Builder
 # ═══════════════════════════════════════════════════════════════════
@@ -1516,6 +1587,32 @@ with tab_entry:
                     return [r for r in recs if r.get("id") != edit_id] + [clean_record]
                 return _m
 
+            def _counterpart_mutator(clean_record, edit_id, counterpart_ids,
+                                    counterpart_flag, counterpart_anom):
+                """
+                Upsert `clean_record` AND tag every existing record whose id is in
+                `counterpart_ids` with `counterpart_flag` (only if currently clean)
+                plus an appended anomaly `counterpart_anom`. Ensures both sides of a
+                confirmed conflict show up in the Anomaly Log and Conflicts & Flags views.
+                """
+                def _m(recs):
+                    out = []
+                    for r in recs:
+                        if r.get("id") == edit_id:
+                            continue
+                        if r.get("id") in counterpart_ids:
+                            r = dict(r)
+                            if r.get("conflict_status") in (None, "", "clean"):
+                                r["conflict_status"] = counterpart_flag
+                            anoms = list(r.get("anomalies") or [])
+                            if counterpart_anom not in anoms:
+                                anoms.append(counterpart_anom)
+                            r["anomalies"] = anoms
+                        out.append(r)
+                    out.append(clean_record)
+                    return out
+                return _m
+
             if conf_state is None:
                 _save_lbl = "💾 Save Changes (Replace Record)" if _edit_id else "💾 Save This Entry to Cache"
                 if st.button(_save_lbl, disabled=gh_config is None):
@@ -1617,18 +1714,23 @@ with tab_entry:
                         eid = conf_state.get("edit_id")
                         pending["conflict_status"] = "duplicate_confirmed"
                         # Inject anomaly string pointing back to the other side(s)
-                        _other_ids = ", ".join(
-                            r.get("id", "")[:8] + "…" for r in conf_state["records"]
-                        )
-                        _anom = f"⚠️ Duplicate accepted — coexists with id {_other_ids}"
-                        pending["anomalies"] = list(pending.get("anomalies") or []) + [_anom]
+                        _counterpart_ids = {r.get("id", "") for r in conf_state["records"]}
+                        _other_ids_disp = ", ".join(i[:8] + "…" for i in _counterpart_ids if i)
+                        _anom_new = f"⚠️ Duplicate accepted — coexists with id {_other_ids_disp}"
+                        pending["anomalies"] = list(pending.get("anomalies") or []) + [_anom_new]
+                        _new_short = pending.get("id", "")[:8] + "…"
+                        _anom_cp = f"⚠️ Duplicate accepted — coexists with id {_new_short}"
                         new_sha = _do_save_push(
-                            gh_config, _upsert_mutator(pending, eid),
+                            gh_config,
+                            _counterpart_mutator(
+                                pending, eid, _counterpart_ids,
+                                "duplicate_confirmed", _anom_cp,
+                            ),
                             f"{'Edit' if eid else 'Add'} entry (duplicate accepted, both retained): {unit_number} / {event_start_date}",
                             eid,
                         )
                         if new_sha:
-                            st.success("✅ Both entries retained. New record flagged `duplicate_confirmed`.")
+                            st.success("✅ Both entries retained and flagged `duplicate_confirmed`.")
                             st.session_state.sa_conflict_state = None
                             st.rerun()
                         # On failure: push_cache already displayed st.error; keep
@@ -1702,13 +1804,23 @@ with tab_entry:
                         pending = dict(conf_state["pending"])
                         eid = conf_state.get("edit_id")
                         pending["conflict_status"] = "overlap_confirmed"
+                        _counterpart_ids = {r.get("id", "") for r in conf_state["records"]}
+                        _other_ids_disp = ", ".join(i[:8] + "…" for i in _counterpart_ids if i)
+                        _anom_new = f"⚠️ Time overlap with id {_other_ids_disp}"
+                        pending["anomalies"] = list(pending.get("anomalies") or []) + [_anom_new]
+                        _new_short = pending.get("id", "")[:8] + "…"
+                        _anom_cp = f"⚠️ Time overlap with id {_new_short}"
                         new_sha = _do_save_push(
-                            gh_config, _upsert_mutator(pending, eid),
-                            f"{'Edit' if eid else 'Add'} entry (overlap flagged): {unit_number} / {event_start_date}",
+                            gh_config,
+                            _counterpart_mutator(
+                                pending, eid, _counterpart_ids,
+                                "overlap_confirmed", _anom_cp,
+                            ),
+                            f"{'Edit' if eid else 'Add'} entry (overlap flagged — both sides): {unit_number} / {event_start_date}",
                             eid,
                         )
                         if new_sha:
-                            st.success("Saved with overlap flag.")
+                            st.success("Saved with overlap flag; counterpart record(s) also flagged.")
                             st.session_state.sa_conflict_state = None
                             st.rerun()
                         # On failure: push_cache already displayed st.error; keep
@@ -1743,13 +1855,23 @@ with tab_entry:
                         pending = dict(conf_state["pending"])
                         eid = conf_state.get("edit_id")
                         pending["conflict_status"] = "multiple_same_day"
+                        _counterpart_ids = {r.get("id", "") for r in conf_state["records"]}
+                        _other_ids_disp = ", ".join(i[:8] + "…" for i in _counterpart_ids if i)
+                        _anom_new = f"ℹ️ Multiple forms same unit/day — see id {_other_ids_disp}"
+                        pending["anomalies"] = list(pending.get("anomalies") or []) + [_anom_new]
+                        _new_short = pending.get("id", "")[:8] + "…"
+                        _anom_cp = f"ℹ️ Multiple forms same unit/day — see id {_new_short}"
                         new_sha = _do_save_push(
-                            gh_config, _upsert_mutator(pending, eid),
-                            f"{'Edit' if eid else 'Add'} entry (multi-form same day): {unit_number} / {event_start_date}",
+                            gh_config,
+                            _counterpart_mutator(
+                                pending, eid, _counterpart_ids,
+                                "multiple_same_day", _anom_cp,
+                            ),
+                            f"{'Edit' if eid else 'Add'} entry (multi-form same day — both sides flagged): {unit_number} / {event_start_date}",
                             eid,
                         )
                         if new_sha:
-                            st.success("✅ Saved.")
+                            st.success("✅ Saved. Counterpart record(s) also flagged.")
                             st.session_state.sa_conflict_state = None
                             st.rerun()
                         # On failure: push_cache already displayed st.error; keep
@@ -1927,12 +2049,6 @@ with tab_analytics:
     with f5:
         f_date_to = st.date_input("To", value=max_date, key="sa_f_to")
 
-    f_id = st.text_input(
-        "Find by ID (full UUID or prefix)",
-        key="sa_f_id",
-        placeholder="e.g. 50cb1eb1  or  50cb1eb1-f926-4166-a27b-130205406a0c",
-    ).strip().lower()
-
     # Apply filters
     fdf = df.copy()
     if f_patrol != "All":
@@ -1945,8 +2061,6 @@ with tab_analytics:
         (pd.to_datetime(fdf["Date"]).dt.date >= f_date_from) &
         (pd.to_datetime(fdf["Date"]).dt.date <= f_date_to)
     ]
-    if f_id:
-        fdf = fdf[fdf["_id"].str.lower().str.contains(f_id, na=False)]
 
     st.caption(f"Showing {len(fdf)} of {len(df)} entries")
     st.divider()
@@ -2550,6 +2664,40 @@ with tab_analytics:
             st.caption(f"{len(adf)} entries with anomalies.")
 
     elif view == "Conflicts & Flags":
+        # Rescan control — flags both sides of any conflict pair that slipped
+        # through before the counterpart-mutator was added, or whose flag was
+        # lost to an earlier bug.
+        _rs_col1, _rs_col2 = st.columns([3, 1])
+        with _rs_col1:
+            st.caption(
+                "**Rescan cache** walks every record and tags both sides of any "
+                "same-unit/same-day conflict that currently shows as `clean`. "
+                "Safe to run any time — only dirty records are changed, and the "
+                "commit message lists how many were updated."
+            )
+        with _rs_col2:
+            st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
+            if st.button("🔍 Rescan cache for conflicts", key="sa_rescan_btn"):
+                # Preview count from the already-loaded records…
+                with st.spinner("Scanning cache for unflagged conflicts..."):
+                    _preview_updated, _n_upd = rescan_conflicts(records)
+                if _n_upd == 0:
+                    st.success("✅ No unflagged conflicts found — cache is clean.")
+                else:
+                    # …but the mutator re-scans the *fresh* cache so a 409
+                    # retry stays idempotent and safe against concurrent writes.
+                    def _rescan_mutator(_recs):
+                        _upd, _ = rescan_conflicts(_recs)
+                        return _upd
+                    _commit_msg = f"Rescan: tag {_n_upd} record(s) with missing conflict flags"
+                    _new_sha = push_cache(gh_config, _rescan_mutator, _commit_msg)
+                    if _new_sha:
+                        if "sa_cache_data" in st.session_state:
+                            del st.session_state["sa_cache_data"]
+                        st.session_state.sa_chain_cache = None
+                        st.success(f"✅ Updated {_n_upd} record(s). Reloading…")
+                        st.rerun()
+
         flagged = display_df[
             (display_df["Flags"] != "clean") | (display_df["Out of Season"] == "⚠️")
         ][["Date", "Patrol", "Unit", "Routes", "Total Hours", "Flags", "Out of Season", "Anomalies"]]
@@ -2560,10 +2708,10 @@ with tab_analytics:
             st.dataframe(flagged, hide_index=True, use_container_width=True)
             st.caption(
                 "**Flag types:** "
-                "`overlap_confirmed` = time overlap saved by auditor; "
-                "`multiple_same_day` = multiple forms same unit/date; "
+                "`overlap_confirmed` = time overlap saved by auditor (both sides flagged); "
+                "`multiple_same_day` = multiple forms same unit/date (both sides flagged); "
                 "`spare_overlap` = spare + primary both on same date; "
-                "`duplicate_confirmed` = duplicate detected, auditor chose to retain both forms; "
+                "`duplicate_confirmed` = duplicate detected, auditor chose to retain both forms (both sides flagged); "
                 "`duplicate_replaced` = duplicate detected, this new record replaced one or more prior entries."
             )
 

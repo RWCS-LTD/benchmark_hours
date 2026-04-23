@@ -48,7 +48,7 @@ Every key below is widget-bound. **Writes to these keys must happen either (a) i
 | `sa_st_{id}`, `sa_et_{id}` | `text_input` (HHMM / HH:MM modes) | Per-circuit row |
 | `sa_rt_{id}` | `text_input` | Per-circuit row |
 | `sa_tp_{id}` | `checkbox` | Per-circuit row |
-| `sa_del_pw_tbl`, `sa_f_*`, `sa_edit_select`, `sa_dup_replace_pw`, `sa_view`, `sa_bm_new_*`, `sa_dl_sort_*`, `sa_tab2_auditor` | various | Analytics tab / duplicate flow |
+| `sa_del_pw_tbl`, `sa_f_*` (no `sa_f_id`), `sa_edit_select`, `sa_dup_replace_pw`, `sa_view`, `sa_bm_new_*`, `sa_dl_sort_*`, `sa_tab2_auditor` | various | Analytics tab / duplicate flow |
 | `bme_{route}` | `number_input` | Manage Route Benchmarks expander |
 
 Non-widget session_state (safe to write anywhere):
@@ -73,6 +73,7 @@ Non-widget session_state (safe to write anywhere):
 | Analytics | `sa_edit_load` (📋 Load) | **`on_click=_do_load_edit`** — writes widget-bound keys | ✅ |
 | Analytics | `sa_tbl_select` (st.dataframe single-row selection), `sa_del_btn_tbl`, `sa_del_confirm_tbl`, `sa_del_cancel1_tbl`, `sa_del_yes_tbl`, `sa_del_cancel2_tbl` | inline, non-widget only | ✅ |
 | Entry (duplicate conflict) | `sa_dup_cancel`, `sa_dup_accept_both`, `sa_dup_replace_btn` | inline, non-widget only | ✅ |
+| Analytics (Conflicts & Flags) | `sa_rescan_btn` | inline, non-widget only | ✅ |
 | Guide | `sa_guide_refresh` | inline, non-widget only | ✅ |
 
 ## GitHub write protocol (`push_cache`)
