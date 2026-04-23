@@ -323,6 +323,113 @@ def _contiguous_intervals_from_minutes(mins: set[int]) -> list[tuple[int, int]]:
     return intervals
 
 
+def _cross_unit_route_overlaps(
+    pending: dict,
+    all_records: list,
+    tolerance_min: int = OVERLAP_TOLERANCE_MIN,
+) -> dict:
+    """
+    Detect circuits where the *same route* is covered by a *different unit* with
+    overlapping time windows. Route matching uses `_norm_route` (case/dash-
+    insensitive). Pairs whose time overlap is ≤ tolerance_min are skipped.
+
+    Returns {counterpart_id: {
+        "unit": counterpart unit_number,
+        "shared_min": total overlap minutes across all matching route pairs,
+        "by_route": {canonical_route_label: [(abs_s, abs_e), ...]},
+    }}. Empty dict if no cross-unit overlaps.
+
+    Pure helper (no Streamlit, no I/O). Used by both the save-path mutator
+    wrapper and the rescan pass so the same detection logic covers new and
+    legacy records.
+    """
+    pending_unit = pending.get("unit_number", "")
+    pending_id = pending.get("id", "")
+    if not pending_unit:
+        return {}
+    try:
+        pending_wins = _circuit_absolute_windows(pending)
+    except Exception:
+        return {}
+    pending_circuits = pending.get("circuits", [])
+    if not pending_circuits or len(pending_circuits) != len(pending_wins):
+        return {}
+
+    # Group pending's circuit windows by normalised route.
+    pending_by_route: dict[str, list[tuple[int, int, str]]] = {}
+    for c, (s, e) in zip(pending_circuits, pending_wins):
+        raw = c.get("route", "") or ""
+        if not raw:
+            continue
+        key = _norm_route(raw)
+        pending_by_route.setdefault(key, []).append((s, e, raw))
+    if not pending_by_route:
+        return {}
+
+    result: dict[str, dict] = {}
+    for other in all_records:
+        other_id = other.get("id", "")
+        if not other_id or other_id == pending_id:
+            continue
+        if other.get("unit_number") == pending_unit:
+            continue
+        if not other.get("unit_number"):
+            continue
+        try:
+            other_wins = _circuit_absolute_windows(other)
+        except Exception:
+            continue
+        other_circuits = other.get("circuits", [])
+        if len(other_circuits) != len(other_wins):
+            continue
+
+        overlaps_by_route: dict[str, list[tuple[int, int]]] = {}
+        total_shared = 0
+        for oc, (os_, oe) in zip(other_circuits, other_wins):
+            raw = oc.get("route", "") or ""
+            if not raw:
+                continue
+            key = _norm_route(raw)
+            if key not in pending_by_route:
+                continue
+            for (ps, pe, pending_raw) in pending_by_route[key]:
+                ss = max(ps, os_)
+                ee = min(pe, oe)
+                if ee - ss > tolerance_min:
+                    # Use the pending record's route label for display.
+                    overlaps_by_route.setdefault(pending_raw, []).append((ss, ee))
+                    total_shared += (ee - ss)
+        if overlaps_by_route:
+            result[other_id] = {
+                "unit": other.get("unit_number", ""),
+                "shared_min": total_shared,
+                "by_route": overlaps_by_route,
+            }
+    return result
+
+
+def _format_cross_unit_anomaly(
+    other_unit: str,
+    other_id: str,
+    shared_min: int,
+    by_route: dict,
+    max_intervals_per_route: int = 2,
+) -> str:
+    """Human-readable cross-unit anomaly string for the Anomaly Log."""
+    route_parts = []
+    for route, intervals in by_route.items():
+        iv_txt = ", ".join(
+            _fmt_abs_minute_range(s, e) for s, e in intervals[:max_intervals_per_route]
+        )
+        if len(intervals) > max_intervals_per_route:
+            iv_txt += f", +{len(intervals) - max_intervals_per_route} more"
+        route_parts.append(f"{route} {iv_txt}")
+    return (
+        f"ℹ️ Cross-unit route coverage — also run by unit {other_unit} "
+        f"(id {other_id[:8]}…, {shared_min} min shared on {'; '.join(route_parts)})"
+    )
+
+
 def _shared_window_summary(
     rec_a: dict,
     rec_b: dict,
@@ -477,6 +584,38 @@ def rescan_conflicts(records: list) -> tuple[list, int]:
                     tgt["anomalies"] = anoms
                     dirty = True
                 if dirty:
+                    changed[tgt_idx] = True
+
+    # ── Second pass: cross-unit route overlaps ────────────────────────
+    # Anomaly-only (no conflict_status change). Walk every pair across
+    # different units and inject the cross-unit anomaly on both sides if
+    # same route + time overlap > tolerance and not already recorded.
+    for i in range(len(updated)):
+        a = by_idx[i]
+        if not a.get("id"):
+            continue
+        cross_unit_for_a = _cross_unit_route_overlaps(a, [by_idx[j] for j in range(len(updated)) if j != i])
+        if not cross_unit_for_a:
+            continue
+        for other_id, info in cross_unit_for_a.items():
+            # Find the index of `other` so we can mutate it too (and mark changed).
+            other_idx = next((j for j in range(len(updated)) if by_idx[j].get("id") == other_id), None)
+            if other_idx is None:
+                continue
+            # Anomaly for `a` — name the counterpart.
+            msg_a = _format_cross_unit_anomaly(
+                info["unit"], other_id, info["shared_min"], info["by_route"],
+            )
+            # Anomaly for `other` — name `a` instead.
+            msg_other = _format_cross_unit_anomaly(
+                a.get("unit_number", ""), a.get("id", ""), info["shared_min"], info["by_route"],
+            )
+            for tgt_idx, msg in ((i, msg_a), (other_idx, msg_other)):
+                tgt = by_idx[tgt_idx]
+                anoms = list(tgt.get("anomalies") or [])
+                if msg not in anoms:
+                    anoms.append(msg)
+                    tgt["anomalies"] = anoms
                     changed[tgt_idx] = True
 
     n_updated = sum(1 for v in changed.values() if v)
@@ -1798,6 +1937,57 @@ with tab_entry:
                     return [r for r in recs if r.get("id") != edit_id] + [clean_record]
                 return _m
 
+            def _with_cross_unit_detection(inner_mutator, clean_record):
+                """
+                Wrap any save mutator so that, on the fresh-cache records list,
+                cross-unit route overlaps with `clean_record` are detected and
+                anomaly strings are injected on BOTH sides (pending + each
+                counterpart). No `conflict_status` change — cross-unit overlap
+                is operational, not billing, so it's Anomaly-Log-only.
+                Idempotent: 409-retry runs the detection again against the new
+                fresh cache, and the anomaly-append check avoids duplicates.
+                """
+                def _m(recs):
+                    cross_unit = _cross_unit_route_overlaps(clean_record, recs)
+                    intermediate = inner_mutator(recs)
+                    if not cross_unit:
+                        return intermediate
+                    pending_id = clean_record.get("id", "")
+                    pending_unit = clean_record.get("unit_number", "")
+                    pending_anoms = [
+                        _format_cross_unit_anomaly(
+                            info["unit"], _oid, info["shared_min"], info["by_route"],
+                        )
+                        for _oid, info in cross_unit.items()
+                    ]
+                    cp_anom_for_id = {
+                        _oid: _format_cross_unit_anomaly(
+                            pending_unit, pending_id, info["shared_min"], info["by_route"],
+                        )
+                        for _oid, info in cross_unit.items()
+                    }
+
+                    out = []
+                    for r in intermediate:
+                        r_id = r.get("id", "")
+                        if r_id == pending_id and pending_anoms:
+                            r = dict(r)
+                            _a = list(r.get("anomalies") or [])
+                            for _s in pending_anoms:
+                                if _s not in _a:
+                                    _a.append(_s)
+                            r["anomalies"] = _a
+                        elif r_id in cp_anom_for_id:
+                            r = dict(r)
+                            _a = list(r.get("anomalies") or [])
+                            _s = cp_anom_for_id[r_id]
+                            if _s not in _a:
+                                _a.append(_s)
+                            r["anomalies"] = _a
+                        out.append(r)
+                    return out
+                return _m
+
             def _counterpart_mutator(clean_record, edit_id, counterpart_ids,
                                     counterpart_flag, counterpart_anom_by_id):
                 """
@@ -1890,7 +2080,11 @@ with tab_entry:
                             f"Add entry: {unit_number} / {','.join(res['routes_used']) or '—'} / {event_start_date}"
                         )
                         new_sha = _do_save_push(
-                            gh_config, _upsert_mutator(pending, _edit_id), _msg, _edit_id
+                            gh_config,
+                            _with_cross_unit_detection(
+                                _upsert_mutator(pending, _edit_id), pending,
+                            ),
+                            _msg, _edit_id,
                         )
                         if new_sha:
                             st.success("✅ Record updated." if _edit_id else "✅ Saved to cache successfully.")
@@ -1958,9 +2152,12 @@ with tab_entry:
                         pending["anomalies"] = list(pending.get("anomalies") or []) + _pending_anoms
                         new_sha = _do_save_push(
                             gh_config,
-                            _counterpart_mutator(
-                                pending, eid, _counterpart_ids,
-                                "duplicate_confirmed", _cp_anom_map,
+                            _with_cross_unit_detection(
+                                _counterpart_mutator(
+                                    pending, eid, _counterpart_ids,
+                                    "duplicate_confirmed", _cp_anom_map,
+                                ),
+                                pending,
                             ),
                             f"{'Edit' if eid else 'Add'} entry (duplicate accepted, both retained): {unit_number} / {event_start_date}",
                             eid,
@@ -2069,7 +2266,9 @@ with tab_entry:
                                     f"{unit_number} / {event_start_date} — replaced by auditor"
                                 )
                                 new_sha = _do_save_push(
-                                    gh_config, _replace_mutator, _commit_msg, eid,
+                                    gh_config,
+                                    _with_cross_unit_detection(_replace_mutator, pending),
+                                    _commit_msg, eid,
                                 )
                                 if new_sha:
                                     st.success(
@@ -2136,9 +2335,12 @@ with tab_entry:
                         pending["anomalies"] = list(pending.get("anomalies") or []) + _pending_anoms
                         new_sha = _do_save_push(
                             gh_config,
-                            _counterpart_mutator(
-                                pending, eid, _counterpart_ids,
-                                "overlap_confirmed", _cp_anom_map,
+                            _with_cross_unit_detection(
+                                _counterpart_mutator(
+                                    pending, eid, _counterpart_ids,
+                                    "overlap_confirmed", _cp_anom_map,
+                                ),
+                                pending,
                             ),
                             f"{'Edit' if eid else 'Add'} entry (overlap flagged — both sides, minute-level): {unit_number} / {event_start_date}",
                             eid,
@@ -2206,9 +2408,12 @@ with tab_entry:
                         pending["anomalies"] = list(pending.get("anomalies") or []) + _pending_anoms
                         new_sha = _do_save_push(
                             gh_config,
-                            _counterpart_mutator(
-                                pending, eid, _counterpart_ids,
-                                "multiple_same_day", _cp_anom_map,
+                            _with_cross_unit_detection(
+                                _counterpart_mutator(
+                                    pending, eid, _counterpart_ids,
+                                    "multiple_same_day", _cp_anom_map,
+                                ),
+                                pending,
                             ),
                             f"{'Edit' if eid else 'Add'} entry (multi-form same day — both sides flagged): {unit_number} / {event_start_date}",
                             eid,

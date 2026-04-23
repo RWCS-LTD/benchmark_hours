@@ -1,309 +1,311 @@
 # Auditor Guide — Winter Equipment Benchmark Hours Calculator
 
+A practical manual for auditing winter vehicle operating hours against contract benchmarks. This guide walks you through every screen and every decision you'll face while using the tool.
+
 ---
 
 ## What This Tool Does
 
-The **Winter Equipment Benchmark Hours Calculator** helps you figure out how many operating hours a winter vehicle is entitled to claim for a given event, based on the rules set out in the contract. You enter the circuits from the vehicle's form, and the tool applies the contract rules automatically — handling inter-circuit gaps, multi-day events, and the end-of-event refuel allowance.
+For each vehicle-form submitted by the contractor, the tool:
 
-The result is a verified operating hours total, plus a downloadable audit report you can save, print, or attach to your records.
+1. Calculates the **correct benchmark operating hours** that can be claimed, applying the contract's gap and refuel rules automatically.
+2. Saves the audited record to a central cache so your work is never lost and so totals roll up per unit, per route, and per patrol.
+3. Detects conflicts between forms — duplicates, time overlaps, cross-unit route sharing — and surfaces them for your review.
+4. Produces downloadable HTML audit reports suitable for filing and submission.
 
----
-
-## Quick Reference
-
-| Item | Value |
-|------|-------|
-| **Gap cap (operating)** | 60 min max per inter-circuit gap |
-| **New event threshold** | Gap > 3 hours between circuits |
-| **Refuel allowance** | Up to 30 min per winter event |
-| **Season dates** | Oct 15 – Apr 30 |
+All billing totals dedupe at the minute level: if two forms claim the same operating minute for the same vehicle, it counts once.
 
 ---
 
-## Step-by-Step: Entering a Form
+## Quick Reference — Contract Rules at a Glance
 
-### Step 1 — Enter Your Circuits
-
-Each **circuit** is one route run from start to finish. Enter them in the order they appear on the form, from first to last.
-
-For each circuit, you enter a **start time** and an **end time**. You can choose how you prefer to type times using the **Time entry format** selector:
-
-| Format | Example | Best for |
-|--------|---------|----------|
-| **HHMM** (default) | `0930`, `1415`, `0005` | Fast keyboard entry |
-| **HH:MM** | `09:30`, `14:15`, `00:05` | Familiar clock format |
-| **H/M Boxes** | Hour `9`, Minute `30` | Mouse-only entry |
-
-> **Tip:** All three formats produce identical results — pick whatever feels fastest for you.
-
-**To add more circuits:** Click **➕ Add Circuit** and fill in the new row.
-
-**To remove a circuit:** Click the 🗑 button on that row. (You must have at least one circuit.)
-
-**For overnight events:** If the event runs past midnight, just keep adding circuits in order — don't change any dates or settings. The tool automatically detects when the clock rolls past midnight and assigns the correct calendar date to each circuit.
+| Rule | Effect |
+|------|--------|
+| **Inter-circuit gap ≤ 60 min** | Full gap counts as operating time. |
+| **Inter-circuit gap 61–180 min** | Only first 60 min counts; excess is non-operating. |
+| **Inter-circuit gap > 180 min** | Gap ends the current winter event; circuits after the gap belong to a new event. |
+| **End-of-event allowance** | Up to 30 min per winter event for unloading and refuel. |
+| **Season dates** | Oct 15 – Apr 30. Forms outside this range save but are tagged `Out of Season`. |
+| **Patrols** | Valid numbers: 11, 12, 13, 14, 15, 16. |
 
 ---
 
-### Step 2 — End-of-Event Allowance
+## Tab 1 — Entry & Calculate
 
-The contract allows up to **30 minutes** at the end of a winter event for unloading leftover material and refuelling the vehicle.
+Use this tab to enter one contractor form, calculate the audited hours, and save the record to the cache.
 
-- The checkbox is checked by default (30 min).
-- If the actual refuel took less time, reduce the number in the box.
-- If no refuel time applies, uncheck the box.
+### Event Header
 
-The tool will never count more than 30 minutes here, regardless of what you enter.
+Fill in the event identification:
 
-**If this form continues on the next day's form:** Check the box labelled _"This form continues on the next day's form (refuel will be counted on the next form)"_. When checked, the refuel allowance is not added to this form — it will be recorded on the continuation form instead. The audit report will show a "Continues to Next Form" notice and a deferred refuel line in the breakdown so the record is clear.
+| Field | What to enter |
+|-------|---------------|
+| **Patrol #** | Pick from the dropdown — 11, 12, 13, 14, 15, or 16. |
+| **Unit #** | The vehicle unit number exactly as written on the form. |
+| **Unit Type** | Plow / Spreader / Combination Unit / Tow Plow / etc. |
+| **Event Start Date** | The calendar date the event began. |
 
----
+If the vehicle is running as a spare: check **Is this a spare unit?** and enter the **primary unit number** it's replacing. Hours will be attributed to the primary unit's benchmark.
 
-### Step 3 — Calculate
+### Entering Circuits
 
-Click **▶ Calculate Operating Hours**. The results appear below.
+Each **circuit** is one run of one route, start to finish. Enter circuits in the order they appear on the form.
 
----
+For each circuit: pick the **Route**, enter **Start time**, enter **End time**, and tick **Tow Plow** if the vehicle used one.
 
-## Time Entry Formats — Details
+Choose your preferred time entry style under **Time entry format**:
 
-**HHMM format** (default): Type the hour and minute as a single 4-digit number, no colon, no spaces.
+| Format | Type | Looks like |
+|--------|------|-----------|
+| **HHMM** (default) | 4 digits, no colon | `0930`, `1415`, `0005` |
+| **HH:MM** | 3 or 4 digits, colon auto-inserted | `605` → `06:05` |
+| **H/M Boxes** | Two separate number boxes | Hour `9`, Minute `30` |
 
-```
-06:05 AM  →  0605
-2:30 PM   →  1430
-Midnight  →  0000
-```
+All three formats produce identical results — pick whichever is fastest for you.
 
-**HH:MM format**: Type 3 or 4 digits — no colon needed. The colon is inserted automatically when you tab to the next field.
+- **➕ Add Circuit** — add another circuit row.
+- **🗑** on a row — remove that circuit (at least one must remain).
+- **Overnight events** — just keep adding circuits. When a start time is earlier than the previous end time, the tool automatically advances to the next calendar day.
 
-```
-6:05 AM   →  type 605 or 0605  →  displays 06:05
-2:30 PM   →  type 1430         →  displays 14:30
-Midnight  →  type 0000         →  displays 00:00
-```
+### End-of-Event Allowance (Refuel)
 
-**H/M Boxes**: Two separate fields — one for the hour (0–23) and one for the minute (0–59).
+The contract allows up to 30 minutes at the end of an event for unloading and refuelling. The checkbox is ticked by default (30 min). Reduce the number or uncheck the box if less applies.
 
-If you type something the tool can't parse, a small warning appears under that field. Fix it before clicking Calculate.
+**If this form continues on the next day's form**, check **"This form continues on the next day's form"**. When checked the refuel isn't added to this form — it's deferred to the continuation form. The audit report will show a clear "Continues to next form" notice.
 
----
+### Calculate
 
-## Understanding the Results
+Click **▶ Calculate Operating Hours**. Results appear below:
 
-After calculating, you'll see several sections:
+- **Circuits table** — one row per circuit with date, times, and duration.
+- **Gap analysis** — one row per inter-circuit gap showing how much counts as operating and which contract rule was applied.
+- **Anomaly flags** — coloured boxes if any gap triggered a rule.
+- **Calculation breakdown** — line-by-line math.
+- **Final total** — audited operating hours in h/m, decimal, and minutes.
 
-### Circuits Table
-A summary of every circuit you entered — number, date, start time, end time, and how long it ran. If the event spanned midnight, each circuit shows the correct calendar date.
+Recalculate as many times as you need.
 
-### Gap Analysis
-The time between each pair of circuits. For each gap, the table shows:
-- **Gap Duration** — total length of the gap
-- **Operating** — how much of that gap counts toward billable hours
-- **Non-operating** — how much is excluded per contract rules
-- **Rule Applied** — which rule was used (see below)
+### Saving to the Cache
 
-### Anomaly Flags
-If any gap triggered a contract rule (capped gap or new winter event), a coloured flag appears here explaining exactly what was detected and why.
+Click **💾 Save This Entry to Cache** to commit the record. One of three things happens:
 
-### Calculation Breakdown
-A line-by-line summary of everything that went into the final total:
-- Circuit operating time
-- Gap operating time (if any)
-- End-of-event allowance (if included)
+1. **Clean save.** A green toast confirms; the record is written.
+2. **A conflict dialog appears.** See [When a conflict is detected](#when-a-conflict-is-detected) below.
+3. **An error appears.** The record is not saved. Scroll up to read the error; most common cause is a missing required field.
 
-### Final Total
-The total benchmark operating hours for this event, shown in hours and minutes, decimal hours, and total minutes.
+### Downloading the HTML Audit Report
 
----
+Scroll to **📄 Download Audit Report**, enter your **Auditor Name**, and click **⬇ Download HTML Report**. The report is self-contained: opens offline, prints cleanly, and contains the full event header, circuit log, gap analysis, anomaly flags, calculation breakdown, final total, and an auditor certification block.
 
-## The Contract Rules Explained
+### Starting Fresh
 
-The contract sets out specific rules for how inter-circuit gaps are counted. Here's what each rule means:
-
-### Gap of 60 minutes or less — Full gap counts
-If the time between the end of one circuit and the start of the next is 60 minutes or less, the entire gap counts as operating time. The vehicle is considered to still be on deployment.
-
-### Gap between 61 and 180 minutes — Capped at 60 minutes
-If the gap is longer than an hour, only the first 60 minutes counts as operating time. The remainder is classified as non-operating and excluded from the total.
-
-> **Example:** A 90-minute gap → 60 min operating + 30 min non-operating.
-
-### Gap over 3 hours — New winter event
-A gap longer than 3 hours means the vehicle has effectively stood down and returned for a separate deployment. The circuits after the gap belong to a **new winter event** and are not counted toward the current event's total.
-
-### End-of-event allowance
-At the end of a winter event, the contract allows up to 30 minutes for the driver to unload any remaining material and refuel the vehicle. This time is added to the operating total (up to the 30-minute cap).
+Click **🔄 New Form** to clear every field and start a brand new form. The new form gets a fresh set of widgets — nothing from the previous form leaks through.
 
 ---
 
-## Anomaly Flags Reference
+## When a Conflict Is Detected
 
-| Flag | What it means |
-|------|--------------|
-| 🔴 **NEW WINTER EVENT** | Gap exceeds 3 hours — circuits after this gap belong to a separate event and are excluded from the current total |
-| 🟡 **Capped at 1h** | Gap is between 61–180 min — only 60 min counts; the excess is non-operating |
-| ⚠️ **Overlap** | A circuit's start time is before the previous circuit's end time — check the form for a data entry error |
-| ⚠️ **Duplicate accepted — 240 min shared (08:00-12:00) with id …** | You chose **Accept Both Entries** on a duplicate detection. The message names how many minutes overlap with the counterpart and the exact time range(s) so the double-reported window is visible without opening each record. |
-| ⚠️ **Time overlap — N min shared (…) with id …** | You chose **Save Anyway + Flag as Overlap**. Same shared-minute detail as above. |
-| ⚠️ **Replaced existing record(s): …** | You chose **Replace Existing Entry** on a duplicate detection. The replaced record's short ID is retained for audit history. |
+Before saving, the tool checks whether the same unit is already recorded on the same date. Three possible dialogs:
 
-Capped gaps and new winter events affect the operating hours total. An overlap flag means the data needs to be verified before the result can be relied on.
+### 🔴 Duplicate — matching circuit start times
 
----
+Shown when the new form shares at least one circuit start time with an existing same-unit/same-day record. Two safe options appear side by side; a destructive option is hidden in a separate expander.
 
-## When a Duplicate or Overlap is Detected
+**Primary actions (pick one):**
 
-When you save a form, the tool checks the cache for conflicts with any record that shares the same unit and date. Three outcomes are possible, each with its own prompt:
+| Button | What happens |
+|--------|---------------|
+| **← Cancel (keep existing)** | The new form is not saved. You go back to the entry screen. |
+| **✅ Accept Both Entries** *(primary)* | Both records are kept. Each side is flagged `duplicate_confirmed` and gets an anomaly naming the counterpart's short ID and the exact shared minutes (e.g. `"Duplicate accepted — 240 min shared (08:00-12:00) with id abc12345…"`). |
 
-### 🔴 Duplicate — same unit, same day, matching circuit start times
+**Use Accept Both** when both forms are legitimate partial audits that should roll up together. Billing dedupes at the minute level automatically — no minute is counted twice.
 
-Shows each existing record in short form (ID · date · unit · patrol · circuits · hours) with a **Show full JSON** expander. The two safe actions sit side by side; the destructive option is hidden inside a separate expander that you have to open on purpose.
+**Destructive option — only if you mean it:**
 
-**Primary row (safe actions):**
+The expander titled `🗑 Destructive: delete the existing record(s) and save this one instead` is collapsed by default. Opening it shows you every record that would be permanently removed, then requires four intentional clicks plus a password before any delete runs:
 
-| Button | Effect |
-|--------|--------|
-| **← Cancel (keep existing)** | No save. The new form is discarded from the conflict queue. |
-| **✅ Accept Both Entries** *(primary)* | Both records retained. The new record is flagged `duplicate_confirmed`; the existing counterpart is also re-flagged and both sides get a shared-minute anomaly (e.g. `"Duplicate accepted — 240 min shared (08:00-12:00) with id abc12345…"`). Use this for legitimate partial audits that should roll up together. |
-
-**Destructive expander — opens on click, closed by default:**
-
-`🗑 Destructive: delete the existing record(s) and save this one instead`
-
-Expanding the box reveals a preview listing every record that will be permanently dropped (date, unit, patrol, id, circuit count, hours, saved timestamp), then a password field, then an arm button. Clicking the arm button transitions to a final Yes/No confirmation layer. Total four intentional clicks + password before any deletion fires. No typed input anywhere. Each conflict target gets record-scoped widget keys, so switching targets resets the password field and arm state — browser autofill cannot "carry" state between different Replace attempts.
-
-Flow summary:
-
-1. Click the expander to open it (click #1).
-2. Review the preview block naming exactly what will be deleted.
+1. Click the expander title (click 1).
+2. Read the preview block — it names each record being dropped by date, unit, patrol, ID, circuit count, hours, and saved timestamp.
 3. Enter the deletion password (`benchmark`).
-4. Click **🗑 Delete record xxxxxxxx… and save this new one** (click #2). You're now armed.
-5. A red final-confirm layer appears with two buttons.
-6. Click **✅ Yes, permanently delete xxxxxxxx…** (click #3) — this commits the delete + save in a single commit.
-7. Or click **← No, cancel** to back out — nothing changes.
+4. Click **🗑 Delete record xxxxxxxx… and save this new one** (click 2). This arms the action but does not yet delete.
+5. A red final-confirm layer appears.
+6. Click **✅ Yes, permanently delete xxxxxxxx…** (click 3) — **this is the click that actually deletes**. Or **← No, cancel** to back out cleanly.
 
-Use Replace when the new form is the complete record and the existing form(s) are known to be wrong or incomplete. Otherwise always prefer Accept Both.
+Use Replace only when the new form is the complete record and the existing ones are known to be wrong or incomplete. Accept Both is safer in almost all cases.
 
-### 🟡 Time overlap — circuit windows intersect (not identical)
+### 🟡 Time Overlap — windows intersect but start times differ
 
-| Button | Effect |
-|--------|--------|
-| **← Cancel** | No save. |
-| **⚠️ Save Anyway + Flag as Overlap** | Both records kept; new record flagged `overlap_confirmed`. The auditor is accepting responsibility for the potential double-count. |
+| Button | What happens |
+|--------|---------------|
+| **← Cancel** | The new form is not saved. |
+| **⚠️ Save Anyway + Flag as Overlap** | Both records are kept. Each side is flagged `overlap_confirmed` and gets an anomaly naming the exact overlapping minutes. |
 
-### ℹ️ Same unit/day, no time overlap
+### ℹ️ Same Unit/Day, No Time Overlap
 
-Common for fragmented contractor forms. Two buttons — **Cancel** or **Confirm & Save** (flags as `multiple_same_day`).
+Common when a contractor submits multiple short forms for one event.
 
-Flagged records appear in the **Conflicts & Flags** view in the Cache Viewer, and any injected anomaly strings also appear in the **Anomaly Log** view — both with a legend explaining every flag type.
+| Button | What happens |
+|--------|---------------|
+| **← Cancel** | The new form is not saved. |
+| **✅ Confirm & Save** | Both records are kept. Each side is flagged `multiple_same_day`. |
 
-**Both sides of a conflict are flagged.** When you save a second form that triggers a duplicate, overlap, or same-day prompt, the existing record you were conflicting with is tagged with the same flag and gets a counterpart anomaly pointing back at the new record. That way Conflicts & Flags shows both forms, not just the newer one. Records that were saved before this behavior was introduced can be retroactively tagged with the **🔍 Rescan cache for conflicts** button at the top of the Conflicts & Flags view.
-
-### Shared-minute detection (double-reporting)
-
-The Conflicts & Flags view has a dedicated **Overlap min (this record)** column. For every flagged record it shows the minutes of this form's operating window that are also claimed on another same-unit form — i.e. the minutes at risk of being billed twice by the contractor.
-
-**The authoritative total is the red banner**, not the column sum. The column is a **per-record** figure — when a pair of forms overlap by 297 min, record A shows 297 and record B shows 297 (same minutes viewed from each side). Summing across rows would double-count. The banner walks each same-unit pair exactly once and reports the true unique total.
-
-**Tolerance: 2 min.** Contiguous overlap sub-intervals of 2 minutes or less are treated as rounding/boundary artifacts and excluded from the column and the banner. This filters stray data-entry slop (e.g. one form's `10:00` end vs another's `10:01` start) without affecting real operational overlap. The tolerance is configurable in `seasonal_aggregator.py` via the `OVERLAP_TOLERANCE_MIN` constant.
-
-**The aggregate Hours views dedupe at the strict minute level, ignoring the tolerance.** If two circuits partially overlap (08:00-10:00 and 09:30-11:00), the combined operating time counts as 08:00-11:00 = 180 min, never as 120 + 90 = 210. The Hours by Unit / Hours by Route / Hours by Patrol / Overclaim Report views all use this merged view internally. The Overclaim Report's `Excess Hrs` column reflects real double-reporting even for 1-minute overlaps — billing correctness never depends on the tolerance setting.
-
-If you want to see the overlap list across the whole season before billing, open Conflicts & Flags and sort descending by **Overlap min (this record)**. Zero-overlap rows are still flagged (e.g. `multiple_same_day` with distinct time windows) but do not carry a double-reporting risk.
+**Every conflict flags both sides.** After save, the existing record and the new record both appear in Conflicts & Flags with matching flags and cross-reference anomalies. Nothing is hidden.
 
 ---
 
-## Cache Viewer — Finding and Deleting Records
+## Tab 2 — Cache Viewer & Analytics
 
-The Cache Viewer (**📊 Cache Viewer & Analytics** tab) shows every saved record with filters for Patrol, Unit, Route, and date range. Two features help locate records when duplicates or conflicts need reconciling:
+Use this tab to browse the saved audit records, see totals, investigate flags, and edit or delete records.
 
-- **ID column in the Submissions Table.** Every row displays the record's short ID (first 8 chars of the UUID). Sort the table by the ID column to group matching short IDs together if you need to locate a record by the identifier shown in a conflict prompt.
+### Filters
 
-### Editing or deleting a record
+Four filters across the top: **Patrol #**, **Unit #**, **Route #**, and a **From/To date range**. All filter boxes are populated from the data in the cache — so as new units or routes appear, they show up automatically.
 
-The Submissions Table is a contained scrollable grid. Select a row to reveal an **Actions on selected record** panel below with two buttons: **✏️ Edit this record** and **🗑 Delete this record**. Both flows are password-protected as before (delete only — edit re-uses the Entry tab's normal save flow, which you control).
+### Views
 
-**Edit workflow:**
+Pick a view from the radio above the table:
 
-1. Switch the view radio to **Submissions Table**.
-2. Click the row you want to edit. The Actions panel appears below the table.
-3. Click **✏️ Edit this record**. The Entry tab is hydrated with the record's data (header, circuits, refuel). A toast at the top of the view confirms "Record loaded — switch to the 📝 Entry & Calculate tab".
-4. Switch to the Entry tab, make changes, and click **Save Changes (Replace Record)**. The existing record is updated in place — no new record is created.
+| View | What it shows |
+|------|--------------|
+| **Submissions Table** | Every record, one row per form. Click a row to Edit or Delete it. |
+| **Hours by Unit** | Audited operating hours per vehicle across all their forms, deduped per event. |
+| **Hours by Route** | Circuit run-time and attributed operating hours per route, plus benchmark progress. |
+| **Hours by Patrol** | Roll-up by patrol — total hours, unit count, form count. |
+| **Anomaly Log** | Every record with a non-empty anomaly string. One-stop list of things worth a second look. |
+| **Conflicts & Flags** | Every flagged record with its `conflict_status`, plus the per-record Overlap min column and the authoritative pairwise overlap banner. See [Conflicts & Flags](#conflicts--flags-view) below. |
+| **Timeline** | Chronological event chains per unit. One continuous winter event may span multiple forms. |
+| **Overclaim Report** | Per-chain audit: how many minutes the contractor claimed vs how many the audit recognises. Non-zero `Excess Hrs` means the contractor's claim is higher than audited. |
 
-Edit safety: the callback blanks every form field before hydrating from the selected record. That way, if you had a partially-entered form in progress when you clicked Edit, you won't get a Frankenstein form mixing old and new fields.
+### Finding a Record
 
-**Delete workflow:**
+The Submissions Table shows an **ID column** (first 8 characters of the record's unique ID). When a conflict dialog mentions an ID, you can sort the table by ID or scroll to find it. The filters narrow which rows display; the delete panel always operates off the full cache so filters can never hide a record from you when you want to remove it.
 
-1. Click the row, then click **🗑 Delete this record**.
-2. Enter the deletion password (`benchmark`) and click **Confirm**.
-3. Click **✅ Yes, Delete** on the final confirmation screen. Cancel is available at every step. Selecting a different row before confirming cancels the in-progress delete.
+### Editing a Record
 
-The delete commits to GitHub in a single operation and names the short ID, date, unit, and routes in the commit message for audit history.
+1. Switch to the **Submissions Table** view.
+2. Click the row you want to edit. An **Actions on selected record** panel appears below.
+3. Click **✏️ Edit this record**. The Entry tab is populated with that record's data.
+4. Switch to **📝 Entry & Calculate**, make your changes, and click **💾 Save Changes (Replace Record)**.
+
+The loaded form is fully reset before being populated, so nothing leaks in from whatever you had on screen before.
+
+### Deleting a Record
+
+1. Select the row in the Submissions Table.
+2. Click **🗑 Delete this record**.
+3. Enter the deletion password (`benchmark`) and click **Confirm**.
+4. Click **✅ Yes, Delete** on the final confirmation.
+
+Cancel is available at every step. Selecting a different row before confirming cancels the in-progress delete.
+
+### Conflicts & Flags View
+
+This is where you reconcile duplicate or overlapping records before submitting billing.
+
+**The red banner at the top of the view** reports the authoritative total:
+- `N pair(s) with impossible overlap — X.XX hrs total unique overlap across the flagged set.`
+
+**The Overlap min (this record) column** shows, for each flagged row, how many of that record's own operating minutes overlap with any other same-unit form.
+
+**Don't sum the column — it double-counts.** If two forms overlap by 297 min, record A shows 297 and record B shows 297 (the same 297 minutes viewed from each side). The banner walks each pair exactly once and is the only correct aggregate figure.
+
+**Tolerance: 2 minutes.** Contiguous overlap intervals of 2 minutes or less are treated as rounding/boundary artifacts (e.g. one form's `10:00` end vs another's `10:01` start). They don't count toward Overlap min or the banner. Real operational overlap is always much larger than 2 min. **Billing dedupe is stricter** — every shared minute is removed from the total, regardless of tolerance — so billing correctness never depends on this setting.
+
+**Flag types you'll see:**
+
+| Flag | Meaning |
+|------|---------|
+| `duplicate_confirmed` | Same unit / day / matching circuit start times. Auditor chose to retain both forms. |
+| `duplicate_replaced` | Same unit / day / matching start times. Auditor chose to delete the prior record and save the new one. |
+| `overlap_confirmed` | Same unit / day / time windows intersect (no exact start match). Auditor confirmed the overlap. |
+| `multiple_same_day` | Same unit / day / no time overlap — two separate forms for fragmented audits. |
+| `spare_overlap` | A spare unit and its primary were both recorded on the same date. |
+
+**Anomalies column** names the exact overlapping time ranges with each counterpart — e.g. `Duplicate accepted — 110 min shared (06:24-08:14) with id b52d89fc…`. You can click through to each referenced counterpart via the ID.
+
+### Cross-Unit Route Coverage (Anomaly Only)
+
+When the **same route** is run by **different units** with overlapping time windows, the tool flags it as an informational anomaly: `ℹ️ Cross-unit route coverage — also run by unit S1495E (id abc12345…, 90 min shared on WK3 10:00-11:30)`.
+
+This is not a billing issue — different vehicles are billed separately. But two vehicles on the same route at the same time may indicate a data-entry error, double-dispatch, or a takeover that's worth investigating. Cross-unit anomalies show up in the **Anomaly Log** view (they don't alter `conflict_status`).
+
+### Admin Controls in Conflicts & Flags
+
+Two buttons at the top of the view:
+
+- **🔍 Rescan cache for conflicts** — walks every record pair and ensures both sides of any same-unit/same-day conflict (and every cross-unit route overlap) carries the matching flag + anomaly. Safe to run any time. Only dirty records change; the commit message names how many.
+- **📋 Normalize Patrol numbers** — one-shot cleanup of legacy records that have "Patrol 11" or "Patrol  12" in the patrol field. Strips any leading `Patrol` prefix and collapses whitespace so every record has a bare number (`11`, `12`, etc.) that matches the dropdown. Safe to run any time; idempotent. After running, the Patrol filter on this tab will show one entry per patrol instead of several fragments.
+
+### Manage Route Benchmarks
+
+Expand the `📋 Manage Route Benchmarks` panel to review contract benchmark hours per route. Routes found in the cache are listed with their current values; you can override a route only if the contract value was amended. Click **💾 Save Overrides to GitHub** to commit.
+
+---
+
+## Tab 3 — Auditor Guide
+
+The manual you're reading now, rendered inside the app. Use **🔄 Refresh Guide** if you want to pull the latest version from the repository without restarting the app.
 
 ---
 
 ## Downloading the Audit Report
 
-Once you've calculated and reviewed the results, scroll down to the **📄 Download Audit Report** section. Fill in these four fields:
+On Tab 1, after calculating, scroll to **📄 Download Audit Report**:
 
-| Field | What to enter |
-|-------|--------------|
-| **Event Start Date** | The calendar date the event began |
-| **Unit ID** | The vehicle unit number (e.g. `Unit 12`) |
-| **Route ID#** | The route identifier (e.g. `R-4402`) |
-| **Auditor Name** | Your full name |
+1. Enter your full name in **Auditor Name**.
+2. Click **⬇ Download HTML Report**.
 
-All four fields are required before the download button becomes active.
+The report is a self-contained HTML file — double-click it to open in any browser, print it cleanly for filing, or attach it to the ministry submission. It contains the event header, the circuit log with calendar dates, the gap analysis table with the contract rule applied to each gap, any anomaly flags, the full calculation breakdown, the final operating hours total, and an auditor certification block.
 
-Click **⬇ Download HTML Report** to save the file. The report opens in any web browser and prints cleanly — it contains:
+On Tab 2's **Submissions Table** view, you can download the report for any previously-saved record — expand **📄 Download Per-Form Audit Reports**, pick the record, and click its Download button.
 
-- Event header (unit, route, date, auditor)
-- Full circuit log with dates and durations
-- Gap analysis table with the contract rule applied to each gap
-- Anomaly flags (if any)
-- Calculation breakdown
-- Final operating hours total
-- An auditor certification block
+---
 
-The report is self-contained (no internet connection needed to view it) and suitable for filing or submission.
+## Anomaly Flag Quick Reference
+
+You'll see these in the per-form results (Tab 1) and in the Anomaly Log and Conflicts & Flags views (Tab 2):
+
+| Flag | Meaning |
+|------|---------|
+| 🔴 **NEW WINTER EVENT** | Gap > 3 hours — circuits after it are a separate event and excluded from this total. |
+| 🟡 **Capped at 1h** | Gap 61–180 min — only 60 min counts as operating. |
+| ⚠️ **Overlap within a form** | A circuit's start is before the prior circuit's end. Check for data-entry error. |
+| ⚠️ **Duplicate accepted — N min shared (HH:MM-HH:MM) with id …** | `duplicate_confirmed`. Both forms retained. |
+| ⚠️ **Time overlap — N min shared (…) with id …** | `overlap_confirmed`. Both forms retained. |
+| ⚠️ **Replaced existing record(s): …** | `duplicate_replaced`. New form replaced the named prior record(s). |
+| ℹ️ **Multiple forms same unit/day — see id …** | `multiple_same_day`. Two legitimate fragmented forms. |
+| ℹ️ **Cross-unit route coverage — also run by unit … (…)** | Same route, different units, overlapping time. Data quality check, not a billing issue. |
 
 ---
 
 ## Tips & Common Questions
 
 **What if I enter a time wrong?**
-Just correct the field and click **▶ Calculate Operating Hours** again. You can recalculate as many times as you need before downloading.
+Correct the field and click **▶ Calculate Operating Hours** again. Recalculate as many times as you need before saving or downloading.
 
 **What if the event spans midnight?**
-No special steps needed. Enter circuits in chronological order. When the tool sees a circuit start time that is earlier than the previous end time (e.g. circuit 3 ends at 23:50, circuit 4 starts at 00:10), it automatically advances to the next calendar day.
-
-**Can I start a fresh calculation without refreshing the browser?**
-Yes — after calculating, click **🔄 New Calculation** at the bottom of the page. This clears all circuits and all result fields so you can start over cleanly.
+No special steps needed. Enter circuits in chronological order. When a start time is earlier than the previous end time (e.g. 23:50 end → 00:10 start), the tool automatically advances to the next calendar day.
 
 **What if there is only one circuit?**
-That's fine. There are no gaps to analyse. The result is just the circuit duration plus any refuel allowance you've included.
+That's fine — no gaps to analyse. The result is just the circuit duration plus any refuel allowance.
 
 **What does "non-operating time" mean?**
-It's the portion of a gap that the contract does not count as billable operating time. It appears in the results for your records but does not contribute to the total.
+The portion of a gap the contract does not count as billable. It's shown for transparency but doesn't contribute to the total.
 
 **The time I need to enter has a leading zero — do I include it?**
-Yes, for HHMM and HH:MM formats, always use two digits for both hours and minutes. `0605` for 6:05 AM, not `605`. The tool will show a warning if the format isn't quite right.
+Yes, for HHMM and HH:MM formats always use two digits for each part. `0605` for 6:05 AM, not `605`. The tool warns if the format is off.
 
----
+**I see "Patrol 11" and "11" as separate options in the Patrol filter. What do I do?**
+Open the **Conflicts & Flags** view and click **📋 Normalize Patrol numbers**. The legacy prefix is stripped from every affected record in one commit. The filter will then consolidate into one entry per patrol.
 
-## Changelog
+**The Submissions Table doesn't show a record I just saved. Where is it?**
+Check the date-range filter at the top of the Cache Viewer — if the "To" date is older than the form you just saved, the record is hidden. Widen the filter.
 
-| Date | Change |
-|------|--------|
-| 2026-04 | Duplicate-detection buttons added: **✅ Accept Both Entries** and **🔁 Replace Existing Entry** (password-protected) — previously the only option was Cancel. Both actions inject an anomaly string naming the counterpart record's short ID so the audit trail is preserved. New flag types `duplicate_confirmed` and `duplicate_replaced` are now listed in the Conflicts & Flags legend. |
-| 2026-04 | Duplicate dialog redesigned: only **Cancel** and **Accept Both Entries** are now shown in the primary action row. The destructive Replace path moved behind an expander (`🗑 Destructive: …`) and is gated by a four-click cascade — expand → password → record-specific arm button → final Yes/No. Record-scoped widget keys so browser autofill can't carry state between different conflict targets. |
-| 2026-04 | Row-select Edit: clicking a row in the Submissions Table now surfaces **✏️ Edit this record** beside the existing **🗑 Delete** button. Edit hydrates the Entry tab with the record's data via an atomic callback that blanks the form first (Frankenstein prevention). The old separate "Edit a Record" expander and its dropdown were removed. Internal refactor: `_do_reset_form`'s body was factored into a shared `_clear_form_state()` helper that both the 🔄 New Form button and the new Edit flow call. |
-| 2026-04 | **Conflicts & Flags banner math fixed** — previously summed a per-record column that double-counted every pair (a 297-min overlap between two records displayed as 594 min). Banner now walks each same-unit pair once and reports the true unique total. Column renamed **Overlap min (this record)** with a caption explaining that it's per-record. Tolerance constant `OVERLAP_TOLERANCE_MIN = 2` filters sub-2-minute contiguous overlaps as rounding artifacts. Billing dedupe (`_merged_chain_windows`) is unchanged and still runs at the strict minute level. |
-| 2026-04 | **Patrol # field is now a fixed dropdown** (11, 12, 13, 14, 15, 16) instead of free-form text. Eliminates the fragmentation seen in the cache (e.g. "Patrol 11" vs "11" appearing as two separate filter options). New **📋 Normalize Patrol numbers** admin button in the Conflicts & Flags view performs a one-shot cleanup of existing records by stripping any leading "Patrol" prefix. Row-select Edit hydrates Patrol # through the same normalizer so pre-migration records load without crashing the dropdown. |
-| 2026-04 | Cache Viewer: **ID column** added to the Submissions Table (first 8 chars of each record's UUID). |
-| 2026-04 | Conflict saves now flag **both sides** — when a duplicate, overlap, or same-day conflict is confirmed by the auditor, both the new record and the existing counterpart record receive the matching `*_confirmed` flag and an anomaly pointing back at each other. New **🔍 Rescan cache for conflicts** button in the Conflicts & Flags view walks the full cache and retroactively tags any pair that slipped through before this behavior existed. |
-| 2026-04 | Submissions Table is now a contained, scrollable grid with native **single-row selection**. Click a row to select it, then use the password-protected **🗑 Delete this record** control directly below (password: `benchmark`). Supports thousands of records without flooding the page. The old "Delete a Record" expander and dropdown-picker are removed. |
-| 2026-04 | "Continues to next form" checkbox added — defers end-of-event refuel to the continuation form. Audit report shows a banner and explicit deferred-refuel line when checked. Overclaim Report simplified: dollar-rate columns removed, excess hours only. Chain-level refuel calculation updated to handle continues flag correctly. |
-| 2026-04 | Time entry format toggle added: choose between HHMM, HH:MM, or separate H/M boxes. Default is HHMM. New Form button fully clears all fields. Add Circuit button reliably initialises fresh fields without requiring a browser refresh. |
-| 2026-04 | Initial release — circuit entry, overnight detection, gap analysis, HTML audit report download. |
+**Can I undo a delete?**
+Not in the app. Deletes commit immediately to GitHub. The commit history preserves the record forever, so it can be recovered by a developer if needed. The password gate and multi-step confirmation exist specifically to prevent accidental deletes.
+
+**Does the app double-count when two forms overlap?**
+No. Every minute of billable time is counted at most once in Hours by Unit / Route / Patrol and Overclaim Report. The red banner in Conflicts & Flags tells you exactly how many minutes were at risk so you can audit the contractor's original claim.
+
+**Who should I contact if something looks wrong?**
+Capture a screenshot of what you're seeing and contact your system administrator. Include the record ID (first 8 characters) where possible.
