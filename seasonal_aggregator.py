@@ -1087,6 +1087,47 @@ def _sa_reformat_to_hh_mm(key: str):
         st.session_state[key] = f"{p[0]:02d}:{p[1]:02d}"
 
 
+def _clear_form_state():
+    """
+    Atomically reset every Entry-tab widget key and non-widget state to a
+    blank-form baseline. Must be called from inside an `on_click` callback —
+    widget-bound writes are illegal in inline post-widget handlers (raises
+    StreamlitAPIException). Used by both the 🔄 New Form button and the
+    Row-select Edit flow to guarantee that the form does NOT carry stale
+    fields into the new session ("Frankenstein" prevention).
+    """
+    # Pop per-circuit widget keys for every row currently on screen
+    for _c in st.session_state.get("sa_circuits", []):
+        _cid = _c["id"]
+        for _pfx in ["sa_sh", "sa_sm", "sa_eh", "sa_em",
+                     "sa_rt", "sa_tp", "sa_st", "sa_et"]:
+            st.session_state.pop(f"{_pfx}_{_cid}", None)
+    # Fresh circuit row with a never-before-used ID (counter monotone, per CLAUDE.md)
+    st.session_state.sa_circuit_counter = st.session_state.get("sa_circuit_counter", 0) + 1
+    _new_id = st.session_state.sa_circuit_counter
+    st.session_state.sa_circuits = [
+        {"id": _new_id, "start_h": 0, "start_m": 0,
+         "end_h": 0, "end_m": 0, "route": "", "tow_plow": False}
+    ]
+    # Header widget keys — reset so the form is actually blank
+    st.session_state["sa_patrol"]       = ""
+    st.session_state["sa_unit"]         = ""
+    st.session_state["sa_is_spare"]     = False
+    st.session_state["sa_primary_unit"] = ""
+    st.session_state["sa_start_date"]   = date.today()
+    # End-of-event allowance widgets
+    st.session_state["sa_refuel_cb"]    = True
+    st.session_state["sa_refuel_min"]   = 30
+    # Continues-to-next-form checkbox
+    st.session_state["sa_continues"]    = False
+    # Non-widget state
+    st.session_state.sa_calc_results      = None
+    st.session_state.sa_conflict_state    = None
+    st.session_state.sa_editing_record_id = None
+    # sa_time_mode intentionally preserved (user's format choice)
+    st.session_state.sa_prev_time_mode    = st.session_state.get("sa_time_mode", "HHMM (e.g. 0930)")
+
+
 # ═══════════════════════════════════════════════════════════════════
 # Session State
 # ═══════════════════════════════════════════════════════════════════
@@ -1130,6 +1171,10 @@ if "sa_editing_record_id" not in st.session_state:
     st.session_state.sa_editing_record_id = None
 if "sa_just_loaded" not in st.session_state:
     st.session_state.sa_just_loaded = False
+# Destructive Replace cascade — tuple of sorted counterpart ids when armed,
+# None when the arm button hasn't been clicked yet for the current conflict.
+if "sa_dup_replace_armed_target" not in st.session_state:
+    st.session_state.sa_dup_replace_armed_target = None
 
 
 def sa_add_circuit():
@@ -1795,6 +1840,7 @@ with tab_entry:
                             "type": ctype, "records": crecs,
                             "pending": pending, "edit_id": _edit_id,
                         }
+                        st.session_state.sa_dup_replace_armed_target = None
                         st.rerun()
 
             elif conf_state["type"] == "duplicate":
@@ -1816,20 +1862,21 @@ with tab_entry:
                     with st.expander("Show full JSON"):
                         st.json(rec)
 
-                dup_col1, dup_col2, dup_col3 = st.columns(3)
+                # ── Primary action row: SAFE actions only ─────────────
+                dup_col1, dup_col2 = st.columns(2)
                 with dup_col1:
                     if st.button("← Cancel (keep existing)", key="sa_dup_cancel"):
                         st.session_state.sa_conflict_state = None
+                        st.session_state.sa_dup_replace_armed_target = None
                         st.rerun()
                 with dup_col2:
-                    if st.button("✅ Accept Both Entries", key="sa_dup_accept_both"):
+                    if st.button("✅ Accept Both Entries",
+                                 key="sa_dup_accept_both", type="primary"):
                         pending = dict(conf_state["pending"])
                         eid = conf_state.get("edit_id")
                         pending["conflict_status"] = "duplicate_confirmed"
                         _counterpart_ids = {r.get("id", "") for r in conf_state["records"]}
                         _new_short = pending.get("id", "")[:8] + "…"
-                        # Per-counterpart shared-minute summaries — both sides
-                        # learn WHICH minutes are doubled, not just that they are.
                         _pending_anoms: list[str] = []
                         _cp_anom_map: dict[str, str] = {}
                         for _cp in conf_state["records"]:
@@ -1862,48 +1909,120 @@ with tab_entry:
                         if new_sha:
                             st.success("✅ Both entries retained and flagged `duplicate_confirmed` with shared-minute detail.")
                             st.session_state.sa_conflict_state = None
+                            st.session_state.sa_dup_replace_armed_target = None
                             st.rerun()
                         # On failure: push_cache already displayed st.error; keep
                         # conflict UI up so the user can retry without losing pending.
-                with dup_col3:
-                    st.markdown("**🔁 Replace Existing**")
+
+                # ── DESTRUCTIVE path: hidden behind an expander ───────
+                # Four intentional clicks (expand + arm + final Yes) plus
+                # password. No typed input anywhere outside the password.
+                # Record-scoped keys so switching targets clears state.
+                _cp_ids_sorted = tuple(sorted(
+                    r.get("id", "") for r in conf_state["records"] if r.get("id")
+                ))
+                _cp_short_str = ", ".join(i[:8] + "…" for i in _cp_ids_sorted)
+                _armed_target = st.session_state.sa_dup_replace_armed_target
+                # If the armed target doesn't match the current conflict (user
+                # dismissed + hit a different conflict), clear it.
+                if _armed_target and _armed_target != _cp_ids_sorted:
+                    st.session_state.sa_dup_replace_armed_target = None
+                    _armed_target = None
+
+                with st.expander(
+                    "🗑 Destructive: delete the existing record(s) and save this one instead",
+                    expanded=False,
+                ):
+                    st.error(
+                        "**Warning — permanent deletion.** Clicking through this flow will "
+                        "remove the record(s) listed above from the cache. The new form is "
+                        "then saved as a replacement in a single commit. **This cannot be undone.**"
+                    )
+                    st.markdown("**Will be permanently deleted:**")
+                    for _cp in conf_state["records"]:
+                        _cp_total_hrs = round(_cp.get("total_operating_minutes", 0) / 60, 2)
+                        st.markdown(
+                            f"- `{_cp.get('id','')[:8]}…` — "
+                            f"{_cp.get('start_date','?')} / Unit {_cp.get('unit_number','?')} / "
+                            f"Patrol {_cp.get('patrol_number','?')} / "
+                            f"{len(_cp.get('circuits', []))} circuit(s) / "
+                            f"{_cp_total_hrs} hrs / "
+                            f"saved {_cp.get('saved_at','')[:19]}"
+                        )
+
+                    # Record-scoped widget keys — prevents autofill / residual
+                    # state from carrying across different conflict targets.
+                    _scope_key = "-".join(i[:8] for i in _cp_ids_sorted) or "empty"
+                    _pw_key   = f"sa_dup_replace_pw_{_scope_key}"
+                    _arm_key  = f"sa_dup_replace_arm_{_scope_key}"
+                    _yes_key  = f"sa_dup_replace_final_{_scope_key}"
+                    _no_key   = f"sa_dup_replace_cancel_{_scope_key}"
+
                     _pw = st.text_input(
                         "Deletion password",
                         type="password",
-                        key="sa_dup_replace_pw",
-                        label_visibility="collapsed",
+                        key=_pw_key,
                         placeholder="Password",
                     )
-                    if st.button("Replace Existing Entry", key="sa_dup_replace_btn"):
-                        if _pw != "benchmark":
-                            st.error("Incorrect password.")
-                        else:
-                            pending = dict(conf_state["pending"])
-                            eid = conf_state.get("edit_id")
-                            pending["conflict_status"] = "duplicate_replaced"
-                            _replaced_ids = [r.get("id", "") for r in conf_state["records"]]
-                            _replaced_short = ", ".join(i[:8] + "…" for i in _replaced_ids)
-                            _anom = f"⚠️ Replaced existing record(s): {_replaced_short}"
-                            pending["anomalies"] = list(pending.get("anomalies") or []) + [_anom]
 
-                            # Mutator removes edit target + every conflicting record, then appends pending.
-                            _drop_ids = set(_replaced_ids)
-                            if eid:
-                                _drop_ids.add(eid)
+                    if _armed_target != _cp_ids_sorted:
+                        # Arm state — require password + click to move to final confirm.
+                        if st.button(
+                            f"🗑 Delete record(s) {_cp_short_str} and save this new one",
+                            key=_arm_key,
+                        ):
+                            if _pw != "benchmark":
+                                st.error("Incorrect password. Destructive action not armed.")
+                            else:
+                                st.session_state.sa_dup_replace_armed_target = _cp_ids_sorted
+                                st.rerun()
+                    else:
+                        # Final confirmation layer.
+                        st.error(
+                            f"⚠️ **Last chance.** Click **Yes, permanently delete** below "
+                            f"to remove {_cp_short_str} and save this new entry. "
+                            f"Click **No, cancel** to back out — nothing will change."
+                        )
+                        _fc1, _fc2 = st.columns(2)
+                        with _fc1:
+                            if st.button(
+                                f"✅ Yes, permanently delete {_cp_short_str}",
+                                key=_yes_key,
+                                type="primary",
+                            ):
+                                pending = dict(conf_state["pending"])
+                                eid = conf_state.get("edit_id")
+                                pending["conflict_status"] = "duplicate_replaced"
+                                _replaced_ids = [r.get("id", "") for r in conf_state["records"]]
+                                _replaced_short = ", ".join(i[:8] + "…" for i in _replaced_ids)
+                                _anom = f"⚠️ Replaced existing record(s): {_replaced_short}"
+                                pending["anomalies"] = list(pending.get("anomalies") or []) + [_anom]
 
-                            def _replace_mutator(recs, _drop=_drop_ids, _new=pending):
-                                return [r for r in recs if r.get("id") not in _drop] + [_new]
+                                _drop_ids = set(_replaced_ids)
+                                if eid:
+                                    _drop_ids.add(eid)
 
-                            _commit_msg = (
-                                f"Replace record(s) [{_replaced_short}] with new entry: "
-                                f"{unit_number} / {event_start_date} — replaced by auditor"
-                            )
-                            new_sha = _do_save_push(
-                                gh_config, _replace_mutator, _commit_msg, eid,
-                            )
-                            if new_sha:
-                                st.success(f"✅ Replaced {len(_replaced_ids)} existing record(s). New entry flagged `duplicate_replaced`.")
-                                st.session_state.sa_conflict_state = None
+                                def _replace_mutator(recs, _drop=_drop_ids, _new=pending):
+                                    return [r for r in recs if r.get("id") not in _drop] + [_new]
+
+                                _commit_msg = (
+                                    f"Replace record(s) [{_replaced_short}] with new entry: "
+                                    f"{unit_number} / {event_start_date} — replaced by auditor"
+                                )
+                                new_sha = _do_save_push(
+                                    gh_config, _replace_mutator, _commit_msg, eid,
+                                )
+                                if new_sha:
+                                    st.success(
+                                        f"✅ Replaced {len(_replaced_ids)} existing record(s). "
+                                        f"New entry flagged `duplicate_replaced`."
+                                    )
+                                    st.session_state.sa_conflict_state = None
+                                    st.session_state.sa_dup_replace_armed_target = None
+                                    st.rerun()
+                        with _fc2:
+                            if st.button("← No, cancel", key=_no_key):
+                                st.session_state.sa_dup_replace_armed_target = None
                                 st.rerun()
 
             elif conf_state["type"] == "overlap":
@@ -2078,39 +2197,7 @@ with tab_entry:
                 # widget-bound keys (sa_continues, sa_patrol, sa_refuel_*, etc.)
                 # are legal. Setting any widget-bound key in an inline post-widget
                 # handler raises StreamlitAPIException.
-                def _do_reset_form():
-                    # Pop per-circuit widget keys for every row currently on screen
-                    for _c in st.session_state.sa_circuits:
-                        _cid = _c["id"]
-                        for _pfx in ["sa_sh", "sa_sm", "sa_eh", "sa_em",
-                                     "sa_rt", "sa_tp", "sa_st", "sa_et"]:
-                            st.session_state.pop(f"{_pfx}_{_cid}", None)
-                    # Fresh circuit row with a never-before-used ID
-                    st.session_state.sa_circuit_counter += 1
-                    _new_id = st.session_state.sa_circuit_counter
-                    st.session_state.sa_circuits = [
-                        {"id": _new_id, "start_h": 0, "start_m": 0,
-                         "end_h": 0, "end_m": 0, "route": "", "tow_plow": False}
-                    ]
-                    # Header widget keys — reset so the form is actually blank
-                    st.session_state["sa_patrol"]       = ""
-                    st.session_state["sa_unit"]         = ""
-                    st.session_state["sa_is_spare"]     = False
-                    st.session_state["sa_primary_unit"] = ""
-                    st.session_state["sa_start_date"]   = date.today()
-                    # End-of-event allowance widgets
-                    st.session_state["sa_refuel_cb"]    = True
-                    st.session_state["sa_refuel_min"]   = 30
-                    # Continues-to-next-form checkbox
-                    st.session_state["sa_continues"]    = False
-                    # Non-widget state
-                    st.session_state.sa_calc_results      = None
-                    st.session_state.sa_conflict_state    = None
-                    st.session_state.sa_editing_record_id = None
-                    # sa_time_mode intentionally preserved (user's format choice)
-                    st.session_state.sa_prev_time_mode    = st.session_state.sa_time_mode
-
-                st.button("🔄 New Form", key="sa_reset", on_click=_do_reset_form)
+                st.button("🔄 New Form", key="sa_reset", on_click=_clear_form_state)
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -2315,9 +2402,14 @@ with tab_analytics:
         _ids_by_pos = _fdf_r["_id"].tolist()
         _display_df_sel = _fdf_r.drop(columns=["_id"])
 
+        # Toast for completed edit loads — surfaced at the top so operators see
+        # it regardless of where they scrolled.
+        if st.session_state.pop("sa_just_loaded", False):
+            st.success("✅ Record loaded — switch to the **📝 Entry & Calculate** tab to review and edit.")
+
         st.caption(
             f"Showing {len(_fdf_r)} of {len(df)} records. "
-            "Click a row to select it, then use **🗑 Delete selected record** below."
+            "Click a row to select it, then use **✏️ Edit** or **🗑 Delete** below."
         )
 
         if _fdf_r.empty:
@@ -2362,10 +2454,10 @@ with tab_analytics:
             _pending_del_id = None
 
         st.divider()
-        st.markdown("**🗑 Delete selected record**")
+        st.markdown("**Actions on selected record**")
 
         if not _selected_id:
-            st.caption("Select a row in the table above to enable deletion.")
+            st.caption("Select a row in the table above to enable Edit / Delete.")
         else:
             _rec_to_del = next((r for r in records if r.get("id") == _selected_id), None)
             if _rec_to_del is None:
@@ -2379,12 +2471,91 @@ with tab_analytics:
                 )
 
                 if _pending_del_id != _selected_id:
-                    # First step: arm the delete.
+                    # Idle state — show EDIT and DELETE side by side.
                     st.info(f"Selected: **{_del_label}**")
-                    if st.button("🗑 Delete this record", key="sa_del_btn_tbl"):
-                        st.session_state.sa_pending_delete = _selected_id
-                        st.session_state.sa_pending_delete_confirmed = False
-                        st.rerun()
+
+                    # Build the arguments _do_load_edit_from_selection needs
+                    # NOW (at render time) — the callback closure captures them.
+                    _erec = _rec_to_del
+                    _circs = _erec.get("circuits", [])
+                    _sa_circs_edit = []
+                    for _c in _circs:
+                        _sp = _c.get("start", "00:00").split(":")
+                        _ep = _c.get("end",   "00:00").split(":")
+                        _sa_circs_edit.append({
+                            "start_h": int(_sp[0]), "start_m": int(_sp[1]),
+                            "end_h":   int(_ep[0]), "end_m":   int(_ep[1]),
+                            "route":    _c.get("route", ""),
+                            "tow_plow": _c.get("tow_plow", False),
+                        })
+                    _n_evts_r = 1 + _erec.get("intra_form_new_events", 0)
+                    _base_ref = _erec.get("refuel_minutes", 30) // max(1, _n_evts_r)
+
+                    def _do_load_edit_from_selection(
+                        _erec=_erec, _esel_id=_selected_id,
+                        _sa_circs=_sa_circs_edit, _base_ref=_base_ref,
+                    ):
+                        # Frankenstein prevention: blank every widget-bound key
+                        # for the current form BEFORE hydrating from the loaded
+                        # record. If hydration later raises, the form is blank,
+                        # not a hybrid of the previous and new data.
+                        _clear_form_state()
+
+                        # Hydrate header keys from loaded record
+                        st.session_state["sa_patrol"]       = _erec.get("patrol_number", "")
+                        st.session_state["sa_unit"]         = _erec.get("unit_number", "")
+                        st.session_state["sa_is_spare"]     = _erec.get("is_spare", False)
+                        st.session_state["sa_primary_unit"] = _erec.get("primary_unit_number", "")
+                        st.session_state["sa_refuel_cb"]    = _base_ref > 0
+                        st.session_state["sa_continues"]    = _erec.get("continues_to_next_form", False)
+                        if _base_ref > 0:
+                            st.session_state["sa_refuel_min"] = _base_ref
+                        _ut = _erec.get("unit_type", "")
+                        if _ut in UNIT_TYPES:
+                            st.session_state["sa_unit_type"] = _ut
+                        try:
+                            st.session_state["sa_start_date"] = date.fromisoformat(_erec["start_date"])
+                        except Exception:
+                            pass
+                        # Assign fresh circuit IDs so widget keys never collide
+                        _start_id = st.session_state.sa_circuit_counter + 1
+                        _load_mode = st.session_state.get("sa_time_mode", "HHMM (e.g. 0930)")
+                        for _ci, _cc in enumerate(_sa_circs):
+                            _cid = _start_id + _ci
+                            _cc["id"] = _cid
+                            if _load_mode == "H/M Boxes":
+                                st.session_state[f"sa_sh_{_cid}"] = _cc["start_h"]
+                                st.session_state[f"sa_sm_{_cid}"] = _cc["start_m"]
+                                st.session_state[f"sa_eh_{_cid}"] = _cc["end_h"]
+                                st.session_state[f"sa_em_{_cid}"] = _cc["end_m"]
+                            elif _load_mode == "HHMM (e.g. 0930)":
+                                st.session_state[f"sa_st_{_cid}"] = f"{_cc['start_h']:02d}{_cc['start_m']:02d}"
+                                st.session_state[f"sa_et_{_cid}"] = f"{_cc['end_h']:02d}{_cc['end_m']:02d}"
+                            else:  # HH:MM single box
+                                st.session_state[f"sa_st_{_cid}"] = f"{_cc['start_h']:02d}:{_cc['start_m']:02d}"
+                                st.session_state[f"sa_et_{_cid}"] = f"{_cc['end_h']:02d}:{_cc['end_m']:02d}"
+                            st.session_state[f"sa_rt_{_cid}"] = _cc["route"]
+                            st.session_state[f"sa_tp_{_cid}"] = _cc["tow_plow"]
+                        st.session_state.sa_circuit_counter = _start_id + len(_sa_circs) - 1
+                        st.session_state.sa_circuits          = _sa_circs if _sa_circs else st.session_state.sa_circuits
+                        st.session_state.sa_editing_record_id = _esel_id
+                        st.session_state.sa_calc_results      = None
+                        st.session_state.sa_conflict_state    = None
+                        st.session_state.sa_just_loaded       = True
+
+                    _act_edit, _act_del = st.columns(2)
+                    with _act_edit:
+                        st.button(
+                            "✏️ Edit this record",
+                            key="sa_rowedit_btn",
+                            type="primary",
+                            on_click=_do_load_edit_from_selection,
+                        )
+                    with _act_del:
+                        if st.button("🗑 Delete this record", key="sa_del_btn_tbl"):
+                            st.session_state.sa_pending_delete = _selected_id
+                            st.session_state.sa_pending_delete_confirmed = False
+                            st.rerun()
                 elif not st.session_state.sa_pending_delete_confirmed:
                     # Second step: password.
                     st.warning(f"⚠️ Delete **{_del_label}**? Password required.")
@@ -2504,99 +2675,6 @@ with tab_analytics:
                             key=f"sa_dl_rec_{_rec.get('id', _row.name)}",
                         )
 
-        st.divider()
-        with st.expander("✏️ Edit a Record"):
-            if fdf.empty:
-                st.info("No records to edit.")
-            else:
-                edit_opts = {}
-                for _, _erow in fdf.iterrows():
-                    _elbl = f"{_erow['Date']} — {_erow['Unit']} — {_erow['Routes']} ({_erow['Total Hours']} hrs)"
-                    edit_opts[_elbl] = _erow["_id"]
-
-                _esel_lbl = st.selectbox("Select record to edit", list(edit_opts.keys()), key="sa_edit_select")
-                _esel_id  = edit_opts.get(_esel_lbl, "")
-
-                if _esel_id:
-                    _erec = next((r for r in records if r.get("id") == _esel_id), None)
-                    if _erec:
-                        _ep_col, _es_col = st.columns([2, 1])
-                        with _ep_col:
-                            st.markdown(
-                                f"**{_erec.get('unit_number','?')}** · "
-                                f"{', '.join(_erec.get('routes_used', [])) or '—'} · "
-                                f"{_erec.get('start_date','?')} · "
-                                f"{len(_erec.get('circuits', []))} circuits · "
-                                f"{_erec.get('total_operating_minutes', 0) / 60:.2f} hrs"
-                            )
-                        with _es_col:
-                            # Reconstruct circuits from saved record
-                            _circs = _erec.get("circuits", [])
-                            _sa_circs = []
-                            for _c in _circs:
-                                _sp = _c.get("start", "00:00").split(":")
-                                _ep = _c.get("end",   "00:00").split(":")
-                                _sa_circs.append({
-                                    "start_h": int(_sp[0]), "start_m": int(_sp[1]),
-                                    "end_h":   int(_ep[0]), "end_m":   int(_ep[1]),
-                                    "route":    _c.get("route", ""),
-                                    "tow_plow": _c.get("tow_plow", False),
-                                })
-                            _n_evts_r = 1 + _erec.get("intra_form_new_events", 0)
-                            _base_ref = _erec.get("refuel_minutes", 30) // max(1, _n_evts_r)
-
-                            # on_click callback — fires BEFORE script re-runs, so widget-bound
-                            # keys can be set without StreamlitAPIException.
-                            # Default-arg capture pins the current values into the closure.
-                            def _do_load_edit(_erec=_erec, _esel_id=_esel_id,
-                                              _sa_circs=_sa_circs, _base_ref=_base_ref):
-                                st.session_state["sa_patrol"]       = _erec.get("patrol_number", "")
-                                st.session_state["sa_unit"]         = _erec.get("unit_number", "")
-                                st.session_state["sa_is_spare"]     = _erec.get("is_spare", False)
-                                st.session_state["sa_primary_unit"] = _erec.get("primary_unit_number", "")
-                                st.session_state["sa_refuel_cb"]    = _base_ref > 0
-                                st.session_state["sa_continues"]    = _erec.get("continues_to_next_form", False)
-                                if _base_ref > 0:
-                                    st.session_state["sa_refuel_min"] = _base_ref
-                                _ut = _erec.get("unit_type", "")
-                                if _ut in UNIT_TYPES:
-                                    st.session_state["sa_unit_type"] = _ut
-                                try:
-                                    st.session_state["sa_start_date"] = date.fromisoformat(_erec["start_date"])
-                                except Exception:
-                                    pass
-                                # Assign fresh IDs to loaded circuits so widget keys are unique
-                                _start_id = st.session_state.sa_circuit_counter + 1
-                                _load_mode = st.session_state.get("sa_time_mode", "HHMM (e.g. 0930)")
-                                for _ci, _cc in enumerate(_sa_circs):
-                                    _cid = _start_id + _ci
-                                    _cc["id"] = _cid
-                                    if _load_mode == "H/M Boxes":
-                                        st.session_state[f"sa_sh_{_cid}"] = _cc["start_h"]
-                                        st.session_state[f"sa_sm_{_cid}"] = _cc["start_m"]
-                                        st.session_state[f"sa_eh_{_cid}"] = _cc["end_h"]
-                                        st.session_state[f"sa_em_{_cid}"] = _cc["end_m"]
-                                    elif _load_mode == "HHMM (e.g. 0930)":
-                                        st.session_state[f"sa_st_{_cid}"] = f"{_cc['start_h']:02d}{_cc['start_m']:02d}"
-                                        st.session_state[f"sa_et_{_cid}"] = f"{_cc['end_h']:02d}{_cc['end_m']:02d}"
-                                    else:  # HH:MM single box
-                                        st.session_state[f"sa_st_{_cid}"] = f"{_cc['start_h']:02d}:{_cc['start_m']:02d}"
-                                        st.session_state[f"sa_et_{_cid}"] = f"{_cc['end_h']:02d}:{_cc['end_m']:02d}"
-                                    st.session_state[f"sa_rt_{_cid}"] = _cc["route"]
-                                    st.session_state[f"sa_tp_{_cid}"] = _cc["tow_plow"]
-                                st.session_state.sa_circuit_counter = _start_id + len(_sa_circs) - 1
-                                # Non-widget state — always safe to set directly
-                                st.session_state.sa_circuits          = _sa_circs if _sa_circs else st.session_state.sa_circuits
-                                st.session_state.sa_editing_record_id = _esel_id
-                                st.session_state.sa_calc_results      = None
-                                st.session_state.sa_conflict_state    = None
-                                st.session_state.sa_just_loaded       = True
-
-                            st.button("📋 Load for Editing", key="sa_edit_load",
-                                      type="primary", on_click=_do_load_edit)
-
-        if st.session_state.pop("sa_just_loaded", False):
-            st.success("✅ Record loaded — switch to the **📝 Entry & Calculate** tab to review and edit.")
 
     elif view == "Hours by Unit":
         # Chain-based aggregation: refuel counted once per event, cross-form gaps capped correctly

@@ -158,13 +158,32 @@ When you save a form, the tool checks the cache for conflicts with any record th
 
 ### 🔴 Duplicate — same unit, same day, matching circuit start times
 
-Shows each existing record in short form (ID · date · unit · patrol · circuits · hours) with a **Show full JSON** expander. You have three choices:
+Shows each existing record in short form (ID · date · unit · patrol · circuits · hours) with a **Show full JSON** expander. The two safe actions sit side by side; the destructive option is hidden inside a separate expander that you have to open on purpose.
+
+**Primary row (safe actions):**
 
 | Button | Effect |
 |--------|--------|
 | **← Cancel (keep existing)** | No save. The new form is discarded from the conflict queue. |
-| **✅ Accept Both Entries** | Both the existing record and the new record are retained in the cache. The new record is flagged `duplicate_confirmed` and an anomaly is injected naming the other record's short ID. Use this when both forms are legitimate partial audits that should roll up together in season totals. |
-| **🔁 Replace Existing Entry** | Password-protected (same deletion password). The conflicting record(s) are removed and the new record takes their place. The new record is flagged `duplicate_replaced` and names the replaced ID(s) in its anomaly list and in the commit message. Use this when the new form is the more complete record and supersedes the old one. |
+| **✅ Accept Both Entries** *(primary)* | Both records retained. The new record is flagged `duplicate_confirmed`; the existing counterpart is also re-flagged and both sides get a shared-minute anomaly (e.g. `"Duplicate accepted — 240 min shared (08:00-12:00) with id abc12345…"`). Use this for legitimate partial audits that should roll up together. |
+
+**Destructive expander — opens on click, closed by default:**
+
+`🗑 Destructive: delete the existing record(s) and save this one instead`
+
+Expanding the box reveals a preview listing every record that will be permanently dropped (date, unit, patrol, id, circuit count, hours, saved timestamp), then a password field, then an arm button. Clicking the arm button transitions to a final Yes/No confirmation layer. Total four intentional clicks + password before any deletion fires. No typed input anywhere. Each conflict target gets record-scoped widget keys, so switching targets resets the password field and arm state — browser autofill cannot "carry" state between different Replace attempts.
+
+Flow summary:
+
+1. Click the expander to open it (click #1).
+2. Review the preview block naming exactly what will be deleted.
+3. Enter the deletion password (`benchmark`).
+4. Click **🗑 Delete record xxxxxxxx… and save this new one** (click #2). You're now armed.
+5. A red final-confirm layer appears with two buttons.
+6. Click **✅ Yes, permanently delete xxxxxxxx…** (click #3) — this commits the delete + save in a single commit.
+7. Or click **← No, cancel** to back out — nothing changes.
+
+Use Replace when the new form is the complete record and the existing form(s) are known to be wrong or incomplete. Otherwise always prefer Accept Both.
 
 ### 🟡 Time overlap — circuit windows intersect (not identical)
 
@@ -197,18 +216,24 @@ The Cache Viewer (**📊 Cache Viewer & Analytics** tab) shows every saved recor
 
 - **ID column in the Submissions Table.** Every row displays the record's short ID (first 8 chars of the UUID). Sort the table by the ID column to group matching short IDs together if you need to locate a record by the identifier shown in a conflict prompt.
 
-### Deleting a record
+### Editing or deleting a record
 
-The Submissions Table is a contained scrollable grid. Select a row to arm deletion, then use the password-protected controls below the table.
+The Submissions Table is a contained scrollable grid. Select a row to reveal an **Actions on selected record** panel below with two buttons: **✏️ Edit this record** and **🗑 Delete this record**. Both flows are password-protected as before (delete only — edit re-uses the Entry tab's normal save flow, which you control).
 
-Workflow:
+**Edit workflow:**
 
 1. Switch the view radio to **Submissions Table**.
-2. Find the row you want to delete (use the filters and the **Find by ID** box as needed).
-3. Click the row in the table to select it. The record's details appear in the **🗑 Delete selected record** section below.
-4. Click **🗑 Delete this record**.
-5. Enter the deletion password (`benchmark`) and click **Confirm**.
-6. Click **✅ Yes, Delete** on the final confirmation screen. Cancel is available at every step. Selecting a different row before confirming cancels the in-progress delete.
+2. Click the row you want to edit. The Actions panel appears below the table.
+3. Click **✏️ Edit this record**. The Entry tab is hydrated with the record's data (header, circuits, refuel). A toast at the top of the view confirms "Record loaded — switch to the 📝 Entry & Calculate tab".
+4. Switch to the Entry tab, make changes, and click **Save Changes (Replace Record)**. The existing record is updated in place — no new record is created.
+
+Edit safety: the callback blanks every form field before hydrating from the selected record. That way, if you had a partially-entered form in progress when you clicked Edit, you won't get a Frankenstein form mixing old and new fields.
+
+**Delete workflow:**
+
+1. Click the row, then click **🗑 Delete this record**.
+2. Enter the deletion password (`benchmark`) and click **Confirm**.
+3. Click **✅ Yes, Delete** on the final confirmation screen. Cancel is available at every step. Selecting a different row before confirming cancels the in-progress delete.
 
 The delete commits to GitHub in a single operation and names the short ID, date, unit, and routes in the commit message for audit history.
 
@@ -268,6 +293,8 @@ Yes, for HHMM and HH:MM formats, always use two digits for both hours and minute
 | Date | Change |
 |------|--------|
 | 2026-04 | Duplicate-detection buttons added: **✅ Accept Both Entries** and **🔁 Replace Existing Entry** (password-protected) — previously the only option was Cancel. Both actions inject an anomaly string naming the counterpart record's short ID so the audit trail is preserved. New flag types `duplicate_confirmed` and `duplicate_replaced` are now listed in the Conflicts & Flags legend. |
+| 2026-04 | Duplicate dialog redesigned: only **Cancel** and **Accept Both Entries** are now shown in the primary action row. The destructive Replace path moved behind an expander (`🗑 Destructive: …`) and is gated by a four-click cascade — expand → password → record-specific arm button → final Yes/No. Record-scoped widget keys so browser autofill can't carry state between different conflict targets. |
+| 2026-04 | Row-select Edit: clicking a row in the Submissions Table now surfaces **✏️ Edit this record** beside the existing **🗑 Delete** button. Edit hydrates the Entry tab with the record's data via an atomic callback that blanks the form first (Frankenstein prevention). The old separate "Edit a Record" expander and its dropdown were removed. Internal refactor: `_do_reset_form`'s body was factored into a shared `_clear_form_state()` helper that both the 🔄 New Form button and the new Edit flow call. |
 | 2026-04 | Cache Viewer: **ID column** added to the Submissions Table (first 8 chars of each record's UUID). |
 | 2026-04 | Conflict saves now flag **both sides** — when a duplicate, overlap, or same-day conflict is confirmed by the auditor, both the new record and the existing counterpart record receive the matching `*_confirmed` flag and an anomaly pointing back at each other. New **🔍 Rescan cache for conflicts** button in the Conflicts & Flags view walks the full cache and retroactively tags any pair that slipped through before this behavior existed. |
 | 2026-04 | Submissions Table is now a contained, scrollable grid with native **single-row selection**. Click a row to select it, then use the password-protected **🗑 Delete this record** control directly below (password: `benchmark`). Supports thousands of records without flooding the page. The old "Delete a Record" expander and dropdown-picker are removed. |

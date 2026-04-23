@@ -48,12 +48,12 @@ Every key below is widget-bound. **Writes to these keys must happen either (a) i
 | `sa_st_{id}`, `sa_et_{id}` | `text_input` (HHMM / HH:MM modes) | Per-circuit row |
 | `sa_rt_{id}` | `text_input` | Per-circuit row |
 | `sa_tp_{id}` | `checkbox` | Per-circuit row |
-| `sa_del_pw_tbl`, `sa_f_*` (no `sa_f_id`), `sa_edit_select`, `sa_dup_replace_pw`, `sa_view`, `sa_bm_new_*`, `sa_dl_sort_*`, `sa_tab2_auditor` | various | Analytics tab / duplicate flow |
+| `sa_del_pw_tbl`, `sa_f_*` (no `sa_f_id`), `sa_dup_replace_pw_{scope}`, `sa_view`, `sa_bm_new_*`, `sa_dl_sort_*`, `sa_tab2_auditor` | various | Analytics tab / duplicate-cascade flow |
 | `bme_{route}` | `number_input` | Manage Route Benchmarks expander |
 
 Non-widget session_state (safe to write anywhere):
 
-- `sa_circuits`, `sa_circuit_counter`, `sa_prev_time_mode`, `sa_calc_results`, `sa_conflict_state`, `sa_chain_cache`, `sa_cache_data`, `sa_benchmarks`, `sa_benchmarks_sha`, `sa_benchmarks_loaded`, `sa_pending_delete`, `sa_pending_delete_confirmed`, `sa_editing_record_id`, `sa_just_loaded`, `sa_guide_content`.
+- `sa_circuits`, `sa_circuit_counter`, `sa_prev_time_mode`, `sa_calc_results`, `sa_conflict_state`, `sa_chain_cache`, `sa_cache_data`, `sa_benchmarks`, `sa_benchmarks_sha`, `sa_benchmarks_loaded`, `sa_pending_delete`, `sa_pending_delete_confirmed`, `sa_editing_record_id`, `sa_just_loaded`, `sa_guide_content`, `sa_dup_replace_armed_target`.
 
 ## Button inventory
 
@@ -66,13 +66,14 @@ Non-widget session_state (safe to write anywhere):
 | Entry | Save to Cache / Save Changes | inline, no widget writes | ✅ |
 | Entry | Cancel / Save Anyway / Confirm & Save (conflict flow) | inline, sets `sa_conflict_state=None` only on success | ✅ |
 | Entry | `sa_dl_btn` (⬇ HTML Report) | `download_button` | ✅ |
-| Entry | `sa_reset` (🔄 New Form) | **`on_click=_do_reset_form`** — MUST stay a callback, writes widget-bound keys | ✅ |
+| Entry | `sa_reset` (🔄 New Form) | **`on_click=_clear_form_state`** — MUST stay a callback, writes widget-bound keys | ✅ |
 | Analytics | `sa_refresh` | inline, non-widget only | ✅ |
 | Analytics | `sa_csv_dl`, `sa_dl_rec_{id}`, `sa_oc_csv` | `download_button` | ✅ |
 | Analytics | `sa_bm_add`, `sa_bm_save` | inline, non-widget only | ✅ |
-| Analytics | `sa_edit_load` (📋 Load) | **`on_click=_do_load_edit`** — writes widget-bound keys | ✅ |
+| Analytics | `sa_rowedit_btn` (✏️ Edit) | **`on_click=_do_load_edit_from_selection`** — calls `_clear_form_state()` first (Frankenstein prevention), then hydrates from selected record. Writes widget-bound keys. | ✅ |
 | Analytics | `sa_tbl_select` (st.dataframe single-row selection), `sa_del_btn_tbl`, `sa_del_confirm_tbl`, `sa_del_cancel1_tbl`, `sa_del_yes_tbl`, `sa_del_cancel2_tbl` | inline, non-widget only | ✅ |
-| Entry (duplicate conflict) | `sa_dup_cancel`, `sa_dup_accept_both`, `sa_dup_replace_btn` | inline, non-widget only | ✅ |
+| Entry (duplicate conflict, primary row) | `sa_dup_cancel`, `sa_dup_accept_both` | inline, non-widget only | ✅ |
+| Entry (duplicate conflict, destructive expander) | `sa_dup_replace_arm_{scope}`, `sa_dup_replace_final_{scope}`, `sa_dup_replace_cancel_{scope}` — record-scoped | inline, non-widget writes only (`sa_dup_replace_armed_target` is non-widget) | ✅ |
 | Analytics (Conflicts & Flags) | `sa_rescan_btn` | inline, non-widget only | ✅ |
 | Guide | `sa_guide_refresh` | inline, non-widget only | ✅ |
 
