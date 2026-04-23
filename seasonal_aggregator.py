@@ -2029,108 +2029,121 @@ with tab_analytics:
     display_df = fdf.drop(columns=["_id"])
 
     if view == "Submissions Table":
-        st.dataframe(display_df, hide_index=True, use_container_width=True)
-        csv = display_df.to_csv(index=False)
-        st.download_button("⬇ Download Filtered CSV", csv,
-                           "season_filtered.csv", "text/csv", key="sa_csv_dl")
-
-        # ── Per-row delete (password-protected) ──────────────────────
-        st.divider()
-        st.markdown("**🗑 Delete a record**")
-        st.caption(
-            "Targets are sourced from the full cache (not the filtered view) so active "
-            "filters cannot hide a record. Password required."
-        )
-        if df.empty:
-            st.info("No records to delete.")
-        else:
-            # Sort options: newest date first so recent entries are easy to find.
-            _sorted_df = df.sort_values(["Date", "Unit"], ascending=[False, True])
-            del_options_tbl = {}
-            for _, _row in _sorted_df.iterrows():
-                _label_tbl = (
-                    f"{_row['Date']} — Unit {_row['Unit']} — Patrol {_row['Patrol']} — "
-                    f"{_row['Routes']} ({_row['Total Hours']} hrs) — id:{_row['_id'][:8]}…"
+        # ── Password-protected delete confirmation panel ──────────────
+        # Shown at the top of the view when a row's 🗑 button has armed a
+        # delete. Source of truth: sa_pending_delete (record id) and
+        # sa_pending_delete_confirmed (bool).
+        _pending_del_id = st.session_state.sa_pending_delete
+        if _pending_del_id:
+            _rec_to_del = next((r for r in records if r.get("id") == _pending_del_id), None)
+            if _rec_to_del is None:
+                # Record no longer exists (concurrent delete). Clear state.
+                st.session_state.sa_pending_delete = None
+                st.session_state.sa_pending_delete_confirmed = False
+            else:
+                _del_label = (
+                    f"Unit {_rec_to_del.get('unit_number', '?')} / "
+                    f"{', '.join(_rec_to_del.get('routes_used', [])) or '—'} / "
+                    f"{_rec_to_del.get('start_date', '?')} / "
+                    f"id:{_pending_del_id[:8]}…"
                 )
-                del_options_tbl[_label_tbl] = _row["_id"]
 
-            selected_label_tbl = st.selectbox(
-                "Select record to delete",
-                list(del_options_tbl.keys()),
-                key="sa_del_select_tbl",
-            )
-            selected_id_tbl = del_options_tbl.get(selected_label_tbl, "")
-
-            if selected_id_tbl:
-                pending_id_tbl = st.session_state.sa_pending_delete
-
-                if pending_id_tbl != selected_id_tbl:
-                    if st.button("🗑 Delete this record", key="sa_del_btn_tbl"):
-                        st.session_state.sa_pending_delete = selected_id_tbl
-                        st.session_state.sa_pending_delete_confirmed = False
-                        st.rerun()
+                if not st.session_state.sa_pending_delete_confirmed:
+                    st.warning(f"⚠️ Delete **{_del_label}**? Password required.")
+                    _pw_col, _confirm_col, _cancel_col = st.columns([2, 1, 1])
+                    with _pw_col:
+                        _pw_val = st.text_input(
+                            "Deletion password",
+                            type="password",
+                            key="sa_del_pw_tbl",
+                        )
+                    with _confirm_col:
+                        st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
+                        if st.button("Confirm", key="sa_del_confirm_tbl"):
+                            if _pw_val == "benchmark":
+                                st.session_state.sa_pending_delete_confirmed = True
+                                st.rerun()
+                            else:
+                                st.error("Incorrect password.")
+                    with _cancel_col:
+                        st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
+                        if st.button("Cancel", key="sa_del_cancel1_tbl"):
+                            st.session_state.sa_pending_delete = None
+                            st.session_state.sa_pending_delete_confirmed = False
+                            st.rerun()
                 else:
-                    if not st.session_state.sa_pending_delete_confirmed:
-                        st.warning("⚠️ This action is permanent and cannot be undone.")
-                        pw_col_t, confirm_col_t, cancel_col_t = st.columns([2, 1, 1])
-                        with pw_col_t:
-                            pw_t = st.text_input(
-                                "Enter deletion password",
-                                type="password",
-                                key="sa_del_pw_tbl",
+                    st.error(f"⚠️ Permanently delete: **{_del_label}**? This cannot be undone.")
+                    _yes_col, _no_col = st.columns(2)
+                    with _yes_col:
+                        if st.button("✅ Yes, Delete", type="primary", key="sa_del_yes_tbl"):
+                            _commit_msg = (
+                                f"Delete record {_pending_del_id[:8]}: "
+                                f"{_rec_to_del.get('unit_number', '?')} / "
+                                f"{','.join(_rec_to_del.get('routes_used', [])) or '—'} / "
+                                f"{_rec_to_del.get('start_date', '?')} — deleted by auditor"
                             )
-                        with confirm_col_t:
-                            st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
-                            if st.button("Confirm", key="sa_del_confirm_tbl"):
-                                if pw_t == "benchmark":
-                                    st.session_state.sa_pending_delete_confirmed = True
-                                    st.rerun()
-                                else:
-                                    st.error("Incorrect password.")
-                        with cancel_col_t:
-                            st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
-                            if st.button("Cancel", key="sa_del_cancel1_tbl"):
+                            _del_id_cap = _pending_del_id
+                            _delete_mutator_tbl = lambda recs: [r for r in recs if r.get("id") != _del_id_cap]
+                            _new_sha = push_cache(gh_config, _delete_mutator_tbl, _commit_msg)
+                            if _new_sha:
+                                st.success("✅ Record deleted.")
+                                for k in ("sa_cache_data",):
+                                    if k in st.session_state:
+                                        del st.session_state[k]
+                                st.session_state.sa_chain_cache = None
                                 st.session_state.sa_pending_delete = None
                                 st.session_state.sa_pending_delete_confirmed = False
                                 st.rerun()
-                    else:
-                        rec_to_del_tbl = next((r for r in records if r.get("id") == selected_id_tbl), None)
-                        if rec_to_del_tbl:
-                            del_label_tbl = (
-                                f"Unit {rec_to_del_tbl.get('unit_number', '?')} / "
-                                f"{', '.join(rec_to_del_tbl.get('routes_used', [])) or '—'} / "
-                                f"{rec_to_del_tbl.get('start_date', '?')}"
-                            )
-                            st.error(f"⚠️ Permanently delete: **{del_label_tbl}**? This cannot be undone.")
-                            yes_col_t, no_col_t = st.columns(2)
-                            with yes_col_t:
-                                if st.button("✅ Yes, Delete", type="primary", key="sa_del_yes_tbl"):
-                                    commit_msg_tbl = (
-                                        f"Delete record {selected_id_tbl[:8]}: "
-                                        f"{rec_to_del_tbl.get('unit_number', '?')} / "
-                                        f"{','.join(rec_to_del_tbl.get('routes_used', [])) or '—'} / "
-                                        f"{rec_to_del_tbl.get('start_date', '?')} — deleted by auditor"
-                                    )
-                                    _del_id_tbl = selected_id_tbl
-                                    _delete_mutator_tbl = lambda recs: [r for r in recs if r.get("id") != _del_id_tbl]
-                                    new_sha_tbl = push_cache(gh_config, _delete_mutator_tbl, commit_msg_tbl)
-                                    if new_sha_tbl:
-                                        st.success("✅ Record deleted.")
-                                        for k in ("sa_cache_data",):
-                                            if k in st.session_state:
-                                                del st.session_state[k]
-                                        st.session_state.sa_chain_cache = None
-                                        st.session_state.sa_pending_delete = None
-                                        st.session_state.sa_pending_delete_confirmed = False
-                                        st.rerun()
-                                    else:
-                                        if st.button("🔄 Retry", key="sa_del_retry_tbl"):
-                                            st.rerun()
-                            with no_col_t:
-                                if st.button("Cancel", key="sa_del_cancel2_tbl"):
-                                    st.session_state.sa_pending_delete = None
-                                    st.session_state.sa_pending_delete_confirmed = False
-                                    st.rerun()
+                    with _no_col:
+                        if st.button("Cancel", key="sa_del_cancel2_tbl"):
+                            st.session_state.sa_pending_delete = None
+                            st.session_state.sa_pending_delete_confirmed = False
+                            st.rerun()
+            st.divider()
+
+        # ── Main cache table — rendered row-by-row with per-row delete ─
+        if fdf.empty:
+            st.info("No records match the current filters.")
+        else:
+            _col_weights = [0.9, 1.0, 0.7, 0.7, 2.2, 0.6, 1.3, 1.2, 0.5]
+            _hdrs = ["ID", "Date", "Patrol", "Unit", "Routes", "Hrs", "Flags", "Anomalies", ""]
+            _header_cols = st.columns(_col_weights)
+            for _hc, _ht in zip(_header_cols, _hdrs):
+                _hc.markdown(f"**{_ht}**")
+            st.markdown(
+                "<hr style='margin-top:2px;margin-bottom:4px;border:0;border-top:1px solid #ddd'>",
+                unsafe_allow_html=True,
+            )
+
+            for _, _row in fdf.iterrows():
+                _rid = _row["_id"]
+                _cols = st.columns(_col_weights)
+                _cols[0].caption(_row["ID"])
+                _cols[1].caption(str(_row["Date"]))
+                _cols[2].caption(str(_row["Patrol"]))
+                _cols[3].caption(str(_row["Unit"]))
+                _cols[4].caption(str(_row["Routes"]))
+                _cols[5].caption(f"{_row['Total Hours']}")
+                _flags_val = _row["Flags"]
+                _cols[6].caption(
+                    _flags_val if _flags_val and _flags_val != "clean" else "—"
+                )
+                _anom_val = _row["Anomalies"] or "—"
+                if len(_anom_val) > 60:
+                    _anom_val = _anom_val[:57] + "…"
+                _cols[7].caption(_anom_val)
+                # 🗑 button — arms pending_delete for this id, re-runs so
+                # the confirm panel at the top of this view picks it up.
+                if _cols[8].button("🗑", key=f"sa_rowdel_{_rid}", help="Delete this record"):
+                    st.session_state.sa_pending_delete = _rid
+                    st.session_state.sa_pending_delete_confirmed = False
+                    st.rerun()
+
+        st.caption(f"Showing {len(fdf)} of {len(df)} records.")
+        st.divider()
+        csv = display_df.to_csv(index=False)
+        st.download_button("⬇ Download Filtered CSV", csv,
+                           "season_filtered.csv", "text/csv", key="sa_csv_dl")
 
         # ── Per-row audit report downloads ────────────────────────────
         st.divider()

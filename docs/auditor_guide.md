@@ -189,16 +189,15 @@ The Cache Viewer (**📊 Cache Viewer & Analytics** tab) shows every saved recor
 
 ### Deleting a record
 
-A password-protected delete control sits directly under the Submissions Table. Targets are sourced from the **full cache** — the Patrol/Unit/Route/date filters above the table do **not** hide records from the delete picker, so you cannot accidentally miss the record you want to remove.
+Each row in the Submissions Table has its own **🗑** button at the far right. The delete flow is password-protected (same `benchmark` password as the other destructive actions) and requires two confirmations.
 
 Workflow:
 
 1. Switch the view radio to **Submissions Table**.
-2. Scroll down past the CSV download to the **🗑 Delete a record** heading.
-3. Pick the record from the dropdown — labels show `date — unit — patrol — routes (hrs) — id:abc12345…` so same-day/same-unit records are distinguishable by their short ID.
-4. Click **🗑 Delete this record**.
-5. Enter the deletion password and click **Confirm**.
-6. Click **✅ Yes, Delete** on the final confirmation screen.
+2. Find the row you want to delete (use the filters and the **Find by ID** box as needed).
+3. Click the row's **🗑** button. A warning panel appears at the top of the view showing the record's unit / routes / date / short ID.
+4. Enter the deletion password and click **Confirm**.
+5. Click **✅ Yes, Delete** on the final confirmation screen. Cancel is available at every step.
 
 The delete commits to GitHub in a single operation and names the short ID, date, unit, and routes in the commit message for audit history.
 
@@ -259,7 +258,7 @@ Yes, for HHMM and HH:MM formats, always use two digits for both hours and minute
 |------|--------|
 | 2026-04 | Duplicate-detection buttons added: **✅ Accept Both Entries** and **🔁 Replace Existing Entry** (password-protected) — previously the only option was Cancel. Both actions inject an anomaly string naming the counterpart record's short ID so the audit trail is preserved. New flag types `duplicate_confirmed` and `duplicate_replaced` are now listed in the Conflicts & Flags legend. |
 | 2026-04 | Cache Viewer: **ID column** added to the Submissions Table (first 8 chars of each record's UUID). **Find by ID** text filter added under the main filter row — accepts full UUID or any prefix, case-insensitive. |
-| 2026-04 | Per-row **🗑 Delete a record** control hoisted to sit directly under the Submissions Table, password-protected. Delete picker is sourced from the full cache (active filters no longer hide records from deletion). The old "Delete a Record" expander was removed. |
+| 2026-04 | Submissions Table re-rendered with a **🗑 button on every row** (password-protected delete, same `benchmark` password). The old "Delete a Record" expander and the dropdown-picker delete panel were removed — delete is now directly on each row. |
 | 2026-04 | "Continues to next form" checkbox added — defers end-of-event refuel to the continuation form. Audit report shows a banner and explicit deferred-refuel line when checked. Overclaim Report simplified: dollar-rate columns removed, excess hours only. Chain-level refuel calculation updated to handle continues flag correctly. |
 | 2026-04 | Time entry format toggle added: choose between HHMM, HH:MM, or separate H/M boxes. Default is HHMM. New Form button fully clears all fields. Add Circuit button reliably initialises fresh fields without requiring a browser refresh. |
 | 2026-04 | Initial release — circuit entry, overnight detection, gap analysis, HTML audit report download. |
