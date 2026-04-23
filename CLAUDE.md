@@ -49,6 +49,7 @@ Every key below is widget-bound. **Writes to these keys must happen either (a) i
 | `sa_rt_{id}` | `text_input` | Per-circuit row |
 | `sa_tp_{id}` | `checkbox` | Per-circuit row |
 | `sa_del_pw_tbl`, `sa_f_*` (no `sa_f_id`), `sa_dup_replace_pw_{scope}`, `sa_view`, `sa_bm_new_*`, `sa_dl_sort_*`, `sa_tab2_auditor` | various | Analytics tab / duplicate-cascade flow |
+| `sa_patrol` | `selectbox` (was `text_input` pre-Fix 5) | Event Header — Patrol # dropdown constrained to `PATROL_OPTIONS` + empty placeholder |
 | `bme_{route}` | `number_input` | Manage Route Benchmarks expander |
 
 Non-widget session_state (safe to write anywhere):
@@ -74,7 +75,7 @@ Non-widget session_state (safe to write anywhere):
 | Analytics | `sa_tbl_select` (st.dataframe single-row selection), `sa_del_btn_tbl`, `sa_del_confirm_tbl`, `sa_del_cancel1_tbl`, `sa_del_yes_tbl`, `sa_del_cancel2_tbl` | inline, non-widget only | ✅ |
 | Entry (duplicate conflict, primary row) | `sa_dup_cancel`, `sa_dup_accept_both` | inline, non-widget only | ✅ |
 | Entry (duplicate conflict, destructive expander) | `sa_dup_replace_arm_{scope}`, `sa_dup_replace_final_{scope}`, `sa_dup_replace_cancel_{scope}` — record-scoped | inline, non-widget writes only (`sa_dup_replace_armed_target` is non-widget) | ✅ |
-| Analytics (Conflicts & Flags) | `sa_rescan_btn` | inline, non-widget only | ✅ |
+| Analytics (Conflicts & Flags) | `sa_rescan_btn`, `sa_normalize_patrol_btn` | inline, non-widget only | ✅ |
 | Guide | `sa_guide_refresh` | inline, non-widget only | ✅ |
 
 ## GitHub write protocol (`push_cache`)

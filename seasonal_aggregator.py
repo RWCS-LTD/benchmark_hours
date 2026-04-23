@@ -7,6 +7,7 @@ per-unit / per-route / per-patrol auditing across the full season.
 """
 
 import os
+import re
 import streamlit as st
 import pandas as pd
 import json
@@ -32,6 +33,17 @@ TOWING_TYPES = {"Combination Unit - Wide Wing", "Tow Plow"}
 SEASON_START    = (10, 15)   # Oct 15
 SEASON_END      = (4, 30)    # Apr 30
 BENCHMARKS_PATH = "data/benchmarks.json"
+
+# Valid patrol numbers — constrains the Patrol # dropdown and controls the
+# batch-migration target. Add a new number here when a new patrol is deployed.
+PATROL_OPTIONS = ["11", "12", "13", "14", "15", "16"]
+
+# Contiguous overlap intervals ≤ this many minutes are treated as rounding /
+# boundary artifacts and are NOT counted as "impossible overlap" in the UI
+# flagging layer (Overlap min column, Conflicts & Flags banner, anomaly strings).
+# Billing dedupe (_merged_chain_windows) is independent and always runs at the
+# strict minute level so billing correctness never depends on this constant.
+OVERLAP_TOLERANCE_MIN = 2
 
 # Contract benchmark hours per route, full season.
 # Loaded from st.secrets["benchmarks"] (Streamlit Cloud) with fallback to benchmarks.json (local dev).
@@ -291,20 +303,12 @@ def _fmt_abs_minute_range(s: int, e: int) -> str:
     return f"{_hhmm(s)}-{_hhmm(e)} (+{day_span}d)"
 
 
-def _shared_window_summary(rec_a: dict, rec_b: dict, max_intervals: int = 3) -> tuple[int, str]:
-    """
-    Compute the minute-level intersection between two records' circuits.
-    Returns (total_shared_min, human_readable_text).
-    Text format: "240 min shared (08:00-12:00)" or "240 min shared (08:00-10:00, 11:00-13:00)".
-    Empty string + 0 if no overlap.
-    """
-    a = _record_covered_minutes(rec_a)
-    b = _record_covered_minutes(rec_b)
-    shared = a & b
-    if not shared:
-        return 0, ""
-    # Reconstruct contiguous intervals from the minute set.
-    sorted_mins = sorted(shared)
+def _contiguous_intervals_from_minutes(mins: set[int]) -> list[tuple[int, int]]:
+    """Return list of (start, end) half-open intervals from a set of absolute minutes.
+    Empty set → []. Used for overlap display + tolerance filtering."""
+    if not mins:
+        return []
+    sorted_mins = sorted(mins)
     intervals: list[tuple[int, int]] = []
     run_s = sorted_mins[0]
     prev = run_s
@@ -316,11 +320,37 @@ def _shared_window_summary(rec_a: dict, rec_b: dict, max_intervals: int = 3) -> 
             run_s = m
             prev = m
     intervals.append((run_s, prev + 1))
+    return intervals
 
-    txt_parts = [_fmt_abs_minute_range(s, e) for s, e in intervals[:max_intervals]]
-    if len(intervals) > max_intervals:
-        txt_parts.append(f"+{len(intervals) - max_intervals} more")
-    return len(shared), f"{len(shared)} min shared ({', '.join(txt_parts)})"
+
+def _shared_window_summary(
+    rec_a: dict,
+    rec_b: dict,
+    max_intervals: int = 3,
+    tolerance_min: int = OVERLAP_TOLERANCE_MIN,
+) -> tuple[int, str]:
+    """
+    Compute the minute-level intersection between two records' circuits and
+    filter out contiguous sub-intervals ≤ tolerance_min (rounding artifacts).
+    Returns (true_impossible_shared_min, human_readable_text).
+    Text format: "240 min shared (08:00-12:00)" or "240 min shared (08:00-10:00, 11:00-13:00)".
+    Returns (0, "") if no non-trivial overlap remains after tolerance filtering.
+    """
+    a = _record_covered_minutes(rec_a)
+    b = _record_covered_minutes(rec_b)
+    shared = a & b
+    if not shared:
+        return 0, ""
+    intervals = _contiguous_intervals_from_minutes(shared)
+    # Tolerance filter: drop boundary / rounding artifacts.
+    kept = [(s, e) for (s, e) in intervals if (e - s) > tolerance_min]
+    if not kept:
+        return 0, ""
+    total = sum(e - s for (s, e) in kept)
+    txt_parts = [_fmt_abs_minute_range(s, e) for s, e in kept[:max_intervals]]
+    if len(kept) > max_intervals:
+        txt_parts.append(f"+{len(kept) - max_intervals} more")
+    return total, f"{total} min shared ({', '.join(txt_parts)})"
 
 
 def check_conflicts(new_record: dict, existing_records: list) -> tuple[str, list]:
@@ -1087,6 +1117,30 @@ def _sa_reformat_to_hh_mm(key: str):
         st.session_state[key] = f"{p[0]:02d}:{p[1]:02d}"
 
 
+def _normalize_patrol(raw: str) -> str:
+    """
+    Strip any leading 'Patrol' (case-insensitive, punctuation, whitespace) and
+    return the bare identifier. Used by (1) the batch-migration button,
+    (2) the Row-select Edit hydration guard so pre-migration records with
+    prefixed patrol values don't crash the new selectbox.
+
+    Examples:
+      'Patrol 11' → '11'
+      'Patrol  11' → '11'   (double space collapsed)
+      'patrol-16' → '16'
+      'PATROL: 12' → '12'
+      '12' → '12'
+      'Patrol ' → ''
+      '' → ''
+    """
+    if not raw:
+        return ""
+    s = str(raw).strip()
+    s = re.sub(r'^(?i:patrol)\s*[#:\-]?\s*', '', s).strip()
+    s = re.sub(r'\s+', ' ', s)
+    return s
+
+
 def _clear_form_state():
     """
     Atomically reset every Entry-tab widget key and non-widget state to a
@@ -1255,7 +1309,12 @@ with tab_entry:
     st.subheader("Event Header")
     h1, h2, h3, h4 = st.columns(4)
     with h1:
-        patrol_number = st.text_input("Patrol #", placeholder="e.g. P-12", key="sa_patrol")
+        patrol_number = st.selectbox(
+            "Patrol #",
+            options=[""] + PATROL_OPTIONS,
+            format_func=lambda v: "— Select —" if v == "" else v,
+            key="sa_patrol",
+        )
     with h2:
         unit_number = st.text_input("Unit #", placeholder="e.g. Unit 12", key="sa_unit")
     with h3:
@@ -2502,7 +2561,11 @@ with tab_analytics:
                         _clear_form_state()
 
                         # Hydrate header keys from loaded record
-                        st.session_state["sa_patrol"]       = _erec.get("patrol_number", "")
+                        # Hydration guard: normalize legacy "Patrol 11" → "11"
+                        # so the selectbox doesn't crash on pre-migration records.
+                        # Unknown values (not in PATROL_OPTIONS) fall back to "".
+                        _loaded_patrol = _normalize_patrol(_erec.get("patrol_number", ""))
+                        st.session_state["sa_patrol"] = _loaded_patrol if _loaded_patrol in PATROL_OPTIONS else ""
                         st.session_state["sa_unit"]         = _erec.get("unit_number", "")
                         st.session_state["sa_is_spare"]     = _erec.get("is_spare", False)
                         st.session_state["sa_primary_unit"] = _erec.get("primary_unit_number", "")
@@ -2907,16 +2970,14 @@ with tab_analytics:
             st.caption(f"{len(adf)} entries with anomalies.")
 
     elif view == "Conflicts & Flags":
-        # Rescan control — flags both sides of any conflict pair that slipped
-        # through before the counterpart-mutator was added, or whose flag was
-        # lost to an earlier bug.
-        _rs_col1, _rs_col2 = st.columns([3, 1])
+        # Admin controls: Rescan + Normalize Patrol.
+        _rs_col1, _rs_col2, _rs_col3 = st.columns([3, 1, 1])
         with _rs_col1:
             st.caption(
                 "**Rescan cache** walks every record and tags both sides of any "
                 "same-unit/same-day conflict that currently shows as `clean`. "
-                "Safe to run any time — only dirty records are changed, and the "
-                "commit message lists how many were updated."
+                "**Normalize Patrol numbers** strips any leading 'Patrol' from stored "
+                "records so filter values consolidate. Both are safe to run any time."
             )
         with _rs_col2:
             st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
@@ -2940,6 +3001,38 @@ with tab_analytics:
                         st.session_state.sa_chain_cache = None
                         st.success(f"✅ Updated {_n_upd} record(s). Reloading…")
                         st.rerun()
+        with _rs_col3:
+            st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
+            if st.button("📋 Normalize Patrol numbers", key="sa_normalize_patrol_btn"):
+                # Preview count on the already-loaded records.
+                _n_changes = sum(
+                    1 for _r in records
+                    if _normalize_patrol(_r.get("patrol_number", "")) != _r.get("patrol_number", "")
+                )
+                if _n_changes == 0:
+                    st.success("✅ All patrol numbers already normalized.")
+                else:
+                    # Mutator re-runs on fresh cache — idempotent under 409 retry.
+                    def _normalize_patrol_mutator(_recs):
+                        _out = []
+                        for _r in _recs:
+                            _norm = _normalize_patrol(_r.get("patrol_number", ""))
+                            if _norm != _r.get("patrol_number", ""):
+                                _r = dict(_r)
+                                _r["patrol_number"] = _norm
+                            _out.append(_r)
+                        return _out
+                    _commit_msg = (
+                        f"Normalize patrol_number: {_n_changes} record(s) "
+                        f"updated (strip 'Patrol' prefix)"
+                    )
+                    _new_sha = push_cache(gh_config, _normalize_patrol_mutator, _commit_msg)
+                    if _new_sha:
+                        if "sa_cache_data" in st.session_state:
+                            del st.session_state["sa_cache_data"]
+                        st.session_state.sa_chain_cache = None
+                        st.success(f"✅ Normalized {_n_changes} record(s). Reloading…")
+                        st.rerun()
 
         # Precompute per-record covered minute sets once for the Shared column.
         # Only same-unit pairs can share minutes; bucket first, then intersect.
@@ -2957,52 +3050,97 @@ with tab_analytics:
         for _rid, _u in _units_by_id.items():
             _by_unit.setdefault(_u, []).append((_rid, _covered_by_id[_rid]))
 
-        def _shared_min_total(rid: str) -> int:
-            """Unique minutes this record shares with ANY other record (same unit)."""
+        def _tolerance_filtered_overlap(a_cov: set[int], b_cov: set[int]) -> int:
+            """Size of the minute intersection AFTER dropping contiguous sub-intervals
+            ≤ OVERLAP_TOLERANCE_MIN (boundary / rounding artifacts)."""
+            inter = a_cov & b_cov
+            if not inter:
+                return 0
+            kept = sum(
+                (e - s) for (s, e) in _contiguous_intervals_from_minutes(inter)
+                if (e - s) > OVERLAP_TOLERANCE_MIN
+            )
+            return kept
+
+        def _shared_min_for_record(rid: str) -> int:
+            """Unique minutes this record shares (above tolerance) with any same-unit counterpart.
+            Per-record figure — summing across rows double-counts each pair. Use the banner
+            computation below for the authoritative dataset-wide total."""
             covered = _covered_by_id.get(rid, set())
             if not covered:
                 return 0
             unit = _units_by_id.get(rid, "")
-            overlap = set()
+            # Union the kept-overlap minute sets across all counterparts, so the
+            # per-record figure counts each of this record's at-risk minutes once.
+            kept_union: set[int] = set()
             for other_rid, other_covered in _by_unit.get(unit, []):
                 if other_rid == rid:
                     continue
-                overlap |= covered & other_covered
-            return len(overlap)
+                inter = covered & other_covered
+                if not inter:
+                    continue
+                for (s, e) in _contiguous_intervals_from_minutes(inter):
+                    if (e - s) > OVERLAP_TOLERANCE_MIN:
+                        kept_union.update(range(s, e))
+            return len(kept_union)
 
-        # Join shared-minute totals onto the filtered frame.
+        # Join per-record overlap minutes onto the filtered frame.
         _fdf_with_shared = fdf.copy()
-        _fdf_with_shared["Shared min"] = _fdf_with_shared["_id"].map(_shared_min_total).fillna(0).astype(int)
+        _fdf_with_shared["Overlap min (this record)"] = (
+            _fdf_with_shared["_id"].map(_shared_min_for_record).fillna(0).astype(int)
+        )
 
         flagged = _fdf_with_shared[
             (_fdf_with_shared["Flags"] != "clean") | (_fdf_with_shared["Out of Season"] == "⚠️")
-        ][["Date", "Patrol", "Unit", "Routes", "Total Hours", "Shared min", "Flags", "Out of Season", "Anomalies"]]
+        ][["Date", "Patrol", "Unit", "Routes", "Total Hours",
+           "Overlap min (this record)", "Flags", "Out of Season", "Anomalies"]]
         if flagged.empty:
             st.success("No conflicts or flags in the current filtered set.")
         else:
-            _double_reported_n = int((flagged["Shared min"] > 0).sum())
-            _double_reported_hrs = flagged["Shared min"].sum() / 60
-            if _double_reported_n:
+            # Authoritative pairwise total: walk each same-unit pair within the
+            # flagged set EXACTLY ONCE and sum the tolerance-filtered overlap.
+            _flagged_ids = set(_fdf_with_shared[
+                (_fdf_with_shared["Flags"] != "clean") | (_fdf_with_shared["Out of Season"] == "⚠️")
+            ]["_id"].tolist())
+            _pair_count = 0
+            _pairwise_min = 0
+            for _u, _bucket in _by_unit.items():
+                _flagged_bucket = [(r, c) for (r, c) in _bucket if r in _flagged_ids]
+                for _i in range(len(_flagged_bucket)):
+                    _a_rid, _a_cov = _flagged_bucket[_i]
+                    for _j in range(_i + 1, len(_flagged_bucket)):
+                        _b_rid, _b_cov = _flagged_bucket[_j]
+                        _pm = _tolerance_filtered_overlap(_a_cov, _b_cov)
+                        if _pm > 0:
+                            _pairwise_min += _pm
+                            _pair_count += 1
+
+            if _pair_count > 0:
                 st.error(
-                    f"⚠️ **{_double_reported_n} record(s) with shared minutes** — "
-                    f"total {_double_reported_hrs:.2f} hrs of overlap across the flagged set. "
+                    f"⚠️ **{_pair_count} pair(s) with impossible overlap** — "
+                    f"**{_pairwise_min / 60:.2f} hrs total unique overlap** across the flagged set. "
                     "The Hours by Unit / Route / Patrol views already dedupe these at the "
                     "minute level, so billing totals are correct. The Anomalies column names "
                     "the exact time ranges that overlap with each counterpart."
                 )
             else:
-                st.warning(f"{len(flagged)} flagged entries require review.")
+                st.warning(
+                    f"{len(flagged)} flagged entries require review (no impossible overlap "
+                    f"above the {OVERLAP_TOLERANCE_MIN}-min tolerance)."
+                )
             st.dataframe(flagged, hide_index=True, use_container_width=True)
             st.caption(
-                "**Shared min** = total unique minutes this record overlaps with any other "
-                "same-unit record. A non-zero value means at least part of the operating window "
-                "was also claimed on another form. "
-                "**Flag types:** "
-                "`overlap_confirmed` = time overlap saved by auditor (both sides flagged); "
-                "`multiple_same_day` = multiple forms same unit/date (both sides flagged); "
-                "`spare_overlap` = spare + primary both on same date; "
-                "`duplicate_confirmed` = duplicate detected, auditor chose to retain both forms (both sides flagged); "
-                "`duplicate_replaced` = duplicate detected, this new record replaced one or more prior entries."
+                f"**Overlap min (this record)** = minutes of this record's operating window "
+                f"that are also claimed on another same-unit form, filtered to contiguous "
+                f"sub-intervals longer than {OVERLAP_TOLERANCE_MIN} minutes. This is a "
+                f"**per-record** figure — **summing the column across rows double-counts** "
+                f"each pair. The red banner above computes the authoritative pairwise total. "
+                f"**Flag types:** "
+                f"`overlap_confirmed` = time overlap saved by auditor (both sides flagged); "
+                f"`multiple_same_day` = multiple forms same unit/date (both sides flagged); "
+                f"`spare_overlap` = spare + primary both on same date; "
+                f"`duplicate_confirmed` = duplicate detected, auditor chose to retain both forms (both sides flagged); "
+                f"`duplicate_replaced` = duplicate detected, this new record replaced one or more prior entries."
             )
 
     elif view == "Timeline":
