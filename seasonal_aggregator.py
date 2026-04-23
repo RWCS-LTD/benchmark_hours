@@ -253,6 +253,76 @@ def _circuit_absolute_windows(record: dict) -> list[tuple[int, int]]:
     return windows
 
 
+def _merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """
+    Merge overlapping/adjacent intervals into a minimal non-overlapping set.
+    Input: list of (start, end) pairs. Returns sorted list of merged (start, end).
+    Critical for minute-level union dedupe: two partially-overlapping intervals
+    (e.g. 08:00-10:00 + 09:30-11:00) merge to 08:00-11:00 = 180 min, never 210.
+    """
+    if not intervals:
+        return []
+    sorted_iv = sorted(intervals)
+    merged = [sorted_iv[0]]
+    for s, e in sorted_iv[1:]:
+        last_s, last_e = merged[-1]
+        if s <= last_e:
+            merged[-1] = (last_s, max(last_e, e))
+        else:
+            merged.append((s, e))
+    return merged
+
+
+def _record_covered_minutes(record: dict) -> set[int]:
+    """Set of absolute-minute ints covered by any circuit in the record (union)."""
+    covered: set[int] = set()
+    for s, e in _circuit_absolute_windows(record):
+        covered.update(range(s, e))
+    return covered
+
+
+def _fmt_abs_minute_range(s: int, e: int) -> str:
+    """Format an absolute-minute range as HH:MM-HH:MM, adding a day marker if crossing midnight."""
+    def _hhmm(m: int) -> str:
+        return f"{(m % 1440) // 60:02d}:{m % 60:02d}"
+    day_span = (e - 1) // 1440 - s // 1440
+    if day_span <= 0:
+        return f"{_hhmm(s)}-{_hhmm(e)}"
+    return f"{_hhmm(s)}-{_hhmm(e)} (+{day_span}d)"
+
+
+def _shared_window_summary(rec_a: dict, rec_b: dict, max_intervals: int = 3) -> tuple[int, str]:
+    """
+    Compute the minute-level intersection between two records' circuits.
+    Returns (total_shared_min, human_readable_text).
+    Text format: "240 min shared (08:00-12:00)" or "240 min shared (08:00-10:00, 11:00-13:00)".
+    Empty string + 0 if no overlap.
+    """
+    a = _record_covered_minutes(rec_a)
+    b = _record_covered_minutes(rec_b)
+    shared = a & b
+    if not shared:
+        return 0, ""
+    # Reconstruct contiguous intervals from the minute set.
+    sorted_mins = sorted(shared)
+    intervals: list[tuple[int, int]] = []
+    run_s = sorted_mins[0]
+    prev = run_s
+    for m in sorted_mins[1:]:
+        if m == prev + 1:
+            prev = m
+        else:
+            intervals.append((run_s, prev + 1))
+            run_s = m
+            prev = m
+    intervals.append((run_s, prev + 1))
+
+    txt_parts = [_fmt_abs_minute_range(s, e) for s, e in intervals[:max_intervals]]
+    if len(intervals) > max_intervals:
+        txt_parts.append(f"+{len(intervals) - max_intervals} more")
+    return len(shared), f"{len(shared)} min shared ({', '.join(txt_parts)})"
+
+
 def check_conflicts(new_record: dict, existing_records: list) -> tuple[str, list]:
     """
     Returns (conflict_type, conflicting_records).
@@ -346,22 +416,27 @@ def rescan_conflicts(records: list) -> tuple[list, int]:
             a_starts = {w[0] for w in a_wins}
             b_starts = {w[0] for w in b_wins}
 
+            # Compute the minute-level shared summary once per pair so both
+            # sides' anomaly strings can name the exact doubled minutes.
+            _, _shared_text = _shared_window_summary(a, b)
+            _shared_suffix = f" — {_shared_text}" if _shared_text else ""
+
             if a_starts & b_starts:
                 flag = "duplicate_confirmed"
-                anom_tmpl = "⚠️ Duplicate (rescan) — coexists with id {sid}"
+                anom_tmpl = "⚠️ Duplicate (rescan){suffix} with id {sid}"
             elif any(an_s < be and an_e > bs
                      for an_s, an_e in a_wins
                      for bs, be in b_wins):
                 flag = "overlap_confirmed"
-                anom_tmpl = "⚠️ Time overlap (rescan) with id {sid}"
+                anom_tmpl = "⚠️ Time overlap (rescan){suffix} with id {sid}"
             else:
                 flag = "multiple_same_day"
-                anom_tmpl = "ℹ️ Multiple forms same unit/day (rescan) — see id {sid}"
+                anom_tmpl = "ℹ️ Multiple forms same unit/day (rescan){suffix} with id {sid}"
 
             for tgt_idx, other in ((i, b), (j, a)):
                 tgt = by_idx[tgt_idx]
                 other_short = (other.get("id", "") or "")[:8] + "…"
-                msg = anom_tmpl.format(sid=other_short)
+                msg = anom_tmpl.format(sid=other_short, suffix=_shared_suffix)
                 dirty = False
                 if tgt.get("conflict_status") in (None, "", "clean"):
                     tgt["conflict_status"] = flag
@@ -745,25 +820,57 @@ def _combined_circuit_seq(chain: list) -> list:
     return seq
 
 
+def _merged_chain_windows(chain: list) -> list[dict]:
+    """
+    Union-merge all circuit time windows across a chain into non-overlapping intervals.
+    Route attribution: each merged interval is attributed to the route of the
+    earliest-starting circuit contributing to it. Later-starting duplicates are
+    absorbed — their minutes are NOT added again (minute-level union dedupe).
+
+    Example: [(WK1B, 08:00-10:00), (WK2B, 09:30-11:00)]
+      → [{"s":08:00, "e":11:00, "route":"WK1B"}]  (180 min total, not 210).
+
+    Returns a list of {"s": abs_min, "e": abs_min, "route": str} sorted by start.
+    """
+    seq = _combined_circuit_seq(chain)   # already sorted by start
+    if not seq:
+        return []
+    merged: list[dict] = []
+    for c in seq:
+        if not merged:
+            merged.append({"s": c["s"], "e": c["e"], "route": c["route"]})
+            continue
+        last = merged[-1]
+        if c["s"] <= last["e"]:
+            # Overlap / adjacency — extend the end, keep the earlier route.
+            if c["e"] > last["e"]:
+                last["e"] = c["e"]
+        else:
+            merged.append({"s": c["s"], "e": c["e"], "route": c["route"]})
+    return merged
+
+
 def _compute_chain_hours(chain: list) -> dict:
     """
-    Re-derive operating hours across all records in a chain.
-    Refuel is taken from the LAST record only (one refuel per event).
+    Re-derive operating hours across all records in a chain using MINUTE-LEVEL
+    UNION of circuit windows — overlapping circuits between forms never
+    double-count. Refuel is taken from the LAST record only (one refuel per event).
     Returns dict with total_operating_min, gap_operating_min, refuel_min, has_overnight.
     """
     if not chain:
         return {"total_operating_min": 0, "circuit_min_by_route": {},
                 "gap_operating_min": 0, "refuel_min": 0, "has_overnight": False}
-    seq = _combined_circuit_seq(chain)
-    if not seq:
+    merged = _merged_chain_windows(chain)
+    if not merged:
         return {"total_operating_min": 0, "circuit_min_by_route": {},
                 "gap_operating_min": 0, "refuel_min": 0, "has_overnight": False}
 
     circuit_min_by_route: dict = {}
     total_circuit_min = 0
-    for item in seq:
-        circuit_min_by_route[item["route"]] = circuit_min_by_route.get(item["route"], 0) + item["dur"]
-        total_circuit_min += item["dur"]
+    for m in merged:
+        dur = m["e"] - m["s"]
+        circuit_min_by_route[m["route"]] = circuit_min_by_route.get(m["route"], 0) + dur
+        total_circuit_min += dur
 
     # Derive per-event refuel from last record (handles both old and new saves)
     _last_rec = chain[-1]
@@ -775,8 +882,8 @@ def _compute_chain_hours(chain: list) -> dict:
 
     gap_operating_min = 0
     intra_form_refuels = 0
-    for i in range(len(seq) - 1):
-        gap = seq[i + 1]["s"] - seq[i]["e"]
+    for i in range(len(merged) - 1):
+        gap = merged[i + 1]["s"] - merged[i]["e"]
         if gap > 180:
             # Intra-form event boundary (cross-form gaps are ≤180 by chain construction)
             intra_form_refuels += base_refuel
@@ -784,7 +891,7 @@ def _compute_chain_hours(chain: list) -> dict:
         gap_operating_min += min(max(gap, 0), 60)
 
     end_refuel = base_refuel if (not _continues and _total_refuel > 0) else 0
-    has_overnight = (max(c["e"] // 1440 for c in seq) > min(c["s"] // 1440 for c in seq))
+    has_overnight = (max(m["e"] // 1440 for m in merged) > min(m["s"] // 1440 for m in merged))
     total_operating_min = total_circuit_min + gap_operating_min + intra_form_refuels + end_refuel
 
     return {
@@ -798,13 +905,14 @@ def _compute_chain_hours(chain: list) -> dict:
 
 def _attribute_chain_hours(chain: list) -> dict:
     """
-    Sequential attribution of all operating hours across a chain.
-    Each inter-circuit gap is attributed to the preceding circuit's route.
-    Refuel (last record only) goes to the last circuit's route.
+    Sequential attribution of all operating hours across a chain using
+    MINUTE-LEVEL UNION merging (same dedupe as _compute_chain_hours).
+    Each inter-merged-interval gap is attributed to the preceding interval's route.
+    Refuel (last record only) goes to the last merged interval's route.
     Returns {route: attributed_operating_hrs}.
     """
-    seq = _combined_circuit_seq(chain)
-    if not seq:
+    merged = _merged_chain_windows(chain)
+    if not merged:
         return {}
 
     # Derive per-event refuel (matches _compute_chain_hours logic)
@@ -817,21 +925,20 @@ def _attribute_chain_hours(chain: list) -> dict:
     end_refuel = base_refuel if (not _continues and _total_refuel > 0) else 0
 
     attributed: dict = {}
-    for item in seq:
-        attributed[item["route"]] = attributed.get(item["route"], 0) + item["dur"]
+    for m in merged:
+        attributed[m["route"]] = attributed.get(m["route"], 0) + (m["e"] - m["s"])
 
-    for i in range(len(seq) - 1):
-        gap = seq[i + 1]["s"] - seq[i]["e"]
+    for i in range(len(merged) - 1):
+        gap = merged[i + 1]["s"] - merged[i]["e"]
         if gap > 180:
-            # Intra-form event boundary — attribute refuel to last circuit of this sub-event
             if base_refuel:
-                attributed[seq[i]["route"]] = attributed.get(seq[i]["route"], 0) + base_refuel
+                attributed[merged[i]["route"]] = attributed.get(merged[i]["route"], 0) + base_refuel
             continue
         gap_op = min(max(gap, 0), 60)
-        attributed[seq[i]["route"]] = attributed.get(seq[i]["route"], 0) + gap_op
+        attributed[merged[i]["route"]] = attributed.get(merged[i]["route"], 0) + gap_op
 
-    if end_refuel and seq:
-        attributed[seq[-1]["route"]] = attributed.get(seq[-1]["route"], 0) + end_refuel
+    if end_refuel and merged:
+        attributed[merged[-1]["route"]] = attributed.get(merged[-1]["route"], 0) + end_refuel
 
     return {rt: mins / 60 for rt, mins in attributed.items()}
 
@@ -1588,12 +1695,17 @@ with tab_entry:
                 return _m
 
             def _counterpart_mutator(clean_record, edit_id, counterpart_ids,
-                                    counterpart_flag, counterpart_anom):
+                                    counterpart_flag, counterpart_anom_by_id):
                 """
                 Upsert `clean_record` AND tag every existing record whose id is in
                 `counterpart_ids` with `counterpart_flag` (only if currently clean)
-                plus an appended anomaly `counterpart_anom`. Ensures both sides of a
-                confirmed conflict show up in the Anomaly Log and Conflicts & Flags views.
+                plus an appended anomaly from `counterpart_anom_by_id[r_id]`.
+                Ensures both sides of a confirmed conflict show up in the Anomaly
+                Log and Conflicts & Flags views, each with a *record-specific*
+                shared-minute summary.
+
+                counterpart_anom_by_id: dict[str, str] — key is counterpart id,
+                value is the anomaly string to append to that specific record.
                 """
                 def _m(recs):
                     out = []
@@ -1601,11 +1713,12 @@ with tab_entry:
                         if r.get("id") == edit_id:
                             continue
                         if r.get("id") in counterpart_ids:
+                            counterpart_anom = counterpart_anom_by_id.get(r.get("id", ""), "")
                             r = dict(r)
                             if r.get("conflict_status") in (None, "", "clean"):
                                 r["conflict_status"] = counterpart_flag
                             anoms = list(r.get("anomalies") or [])
-                            if counterpart_anom not in anoms:
+                            if counterpart_anom and counterpart_anom not in anoms:
                                 anoms.append(counterpart_anom)
                             r["anomalies"] = anoms
                         out.append(r)
@@ -1713,24 +1826,41 @@ with tab_entry:
                         pending = dict(conf_state["pending"])
                         eid = conf_state.get("edit_id")
                         pending["conflict_status"] = "duplicate_confirmed"
-                        # Inject anomaly string pointing back to the other side(s)
                         _counterpart_ids = {r.get("id", "") for r in conf_state["records"]}
-                        _other_ids_disp = ", ".join(i[:8] + "…" for i in _counterpart_ids if i)
-                        _anom_new = f"⚠️ Duplicate accepted — coexists with id {_other_ids_disp}"
-                        pending["anomalies"] = list(pending.get("anomalies") or []) + [_anom_new]
                         _new_short = pending.get("id", "")[:8] + "…"
-                        _anom_cp = f"⚠️ Duplicate accepted — coexists with id {_new_short}"
+                        # Per-counterpart shared-minute summaries — both sides
+                        # learn WHICH minutes are doubled, not just that they are.
+                        _pending_anoms: list[str] = []
+                        _cp_anom_map: dict[str, str] = {}
+                        for _cp in conf_state["records"]:
+                            _cp_id = _cp.get("id", "")
+                            _n, _summary = _shared_window_summary(pending, _cp)
+                            if _summary:
+                                _pending_anoms.append(
+                                    f"⚠️ Duplicate accepted — {_summary} with id {_cp_id[:8]}…"
+                                )
+                                _cp_anom_map[_cp_id] = (
+                                    f"⚠️ Duplicate accepted — {_summary} with id {_new_short}"
+                                )
+                            else:
+                                _pending_anoms.append(
+                                    f"⚠️ Duplicate accepted — coexists with id {_cp_id[:8]}…"
+                                )
+                                _cp_anom_map[_cp_id] = (
+                                    f"⚠️ Duplicate accepted — coexists with id {_new_short}"
+                                )
+                        pending["anomalies"] = list(pending.get("anomalies") or []) + _pending_anoms
                         new_sha = _do_save_push(
                             gh_config,
                             _counterpart_mutator(
                                 pending, eid, _counterpart_ids,
-                                "duplicate_confirmed", _anom_cp,
+                                "duplicate_confirmed", _cp_anom_map,
                             ),
                             f"{'Edit' if eid else 'Add'} entry (duplicate accepted, both retained): {unit_number} / {event_start_date}",
                             eid,
                         )
                         if new_sha:
-                            st.success("✅ Both entries retained and flagged `duplicate_confirmed`.")
+                            st.success("✅ Both entries retained and flagged `duplicate_confirmed` with shared-minute detail.")
                             st.session_state.sa_conflict_state = None
                             st.rerun()
                         # On failure: push_cache already displayed st.error; keep
@@ -1805,22 +1935,38 @@ with tab_entry:
                         eid = conf_state.get("edit_id")
                         pending["conflict_status"] = "overlap_confirmed"
                         _counterpart_ids = {r.get("id", "") for r in conf_state["records"]}
-                        _other_ids_disp = ", ".join(i[:8] + "…" for i in _counterpart_ids if i)
-                        _anom_new = f"⚠️ Time overlap with id {_other_ids_disp}"
-                        pending["anomalies"] = list(pending.get("anomalies") or []) + [_anom_new]
                         _new_short = pending.get("id", "")[:8] + "…"
-                        _anom_cp = f"⚠️ Time overlap with id {_new_short}"
+                        _pending_anoms: list[str] = []
+                        _cp_anom_map: dict[str, str] = {}
+                        for _cp in conf_state["records"]:
+                            _cp_id = _cp.get("id", "")
+                            _n, _summary = _shared_window_summary(pending, _cp)
+                            if _summary:
+                                _pending_anoms.append(
+                                    f"⚠️ Time overlap — {_summary} with id {_cp_id[:8]}…"
+                                )
+                                _cp_anom_map[_cp_id] = (
+                                    f"⚠️ Time overlap — {_summary} with id {_new_short}"
+                                )
+                            else:
+                                _pending_anoms.append(
+                                    f"⚠️ Time overlap with id {_cp_id[:8]}…"
+                                )
+                                _cp_anom_map[_cp_id] = (
+                                    f"⚠️ Time overlap with id {_new_short}"
+                                )
+                        pending["anomalies"] = list(pending.get("anomalies") or []) + _pending_anoms
                         new_sha = _do_save_push(
                             gh_config,
                             _counterpart_mutator(
                                 pending, eid, _counterpart_ids,
-                                "overlap_confirmed", _anom_cp,
+                                "overlap_confirmed", _cp_anom_map,
                             ),
-                            f"{'Edit' if eid else 'Add'} entry (overlap flagged — both sides): {unit_number} / {event_start_date}",
+                            f"{'Edit' if eid else 'Add'} entry (overlap flagged — both sides, minute-level): {unit_number} / {event_start_date}",
                             eid,
                         )
                         if new_sha:
-                            st.success("Saved with overlap flag; counterpart record(s) also flagged.")
+                            st.success("Saved with overlap flag; counterpart record(s) also flagged with shared-minute detail.")
                             st.session_state.sa_conflict_state = None
                             st.rerun()
                         # On failure: push_cache already displayed st.error; keep
@@ -1856,16 +2002,35 @@ with tab_entry:
                         eid = conf_state.get("edit_id")
                         pending["conflict_status"] = "multiple_same_day"
                         _counterpart_ids = {r.get("id", "") for r in conf_state["records"]}
-                        _other_ids_disp = ", ".join(i[:8] + "…" for i in _counterpart_ids if i)
-                        _anom_new = f"ℹ️ Multiple forms same unit/day — see id {_other_ids_disp}"
-                        pending["anomalies"] = list(pending.get("anomalies") or []) + [_anom_new]
                         _new_short = pending.get("id", "")[:8] + "…"
-                        _anom_cp = f"ℹ️ Multiple forms same unit/day — see id {_new_short}"
+                        # No time overlap expected here by definition, so the
+                        # summary is usually empty. Still run it so any edge-case
+                        # minute-adjacency is recorded.
+                        _pending_anoms: list[str] = []
+                        _cp_anom_map: dict[str, str] = {}
+                        for _cp in conf_state["records"]:
+                            _cp_id = _cp.get("id", "")
+                            _n, _summary = _shared_window_summary(pending, _cp)
+                            if _summary:
+                                _pending_anoms.append(
+                                    f"ℹ️ Multiple forms same unit/day — {_summary} with id {_cp_id[:8]}…"
+                                )
+                                _cp_anom_map[_cp_id] = (
+                                    f"ℹ️ Multiple forms same unit/day — {_summary} with id {_new_short}"
+                                )
+                            else:
+                                _pending_anoms.append(
+                                    f"ℹ️ Multiple forms same unit/day — see id {_cp_id[:8]}…"
+                                )
+                                _cp_anom_map[_cp_id] = (
+                                    f"ℹ️ Multiple forms same unit/day — see id {_new_short}"
+                                )
+                        pending["anomalies"] = list(pending.get("anomalies") or []) + _pending_anoms
                         new_sha = _do_save_push(
                             gh_config,
                             _counterpart_mutator(
                                 pending, eid, _counterpart_ids,
-                                "multiple_same_day", _anom_cp,
+                                "multiple_same_day", _cp_anom_map,
                             ),
                             f"{'Edit' if eid else 'Add'} entry (multi-form same day — both sides flagged): {unit_number} / {event_start_date}",
                             eid,
@@ -2698,15 +2863,62 @@ with tab_analytics:
                         st.success(f"✅ Updated {_n_upd} record(s). Reloading…")
                         st.rerun()
 
-        flagged = display_df[
-            (display_df["Flags"] != "clean") | (display_df["Out of Season"] == "⚠️")
-        ][["Date", "Patrol", "Unit", "Routes", "Total Hours", "Flags", "Out of Season", "Anomalies"]]
+        # Precompute per-record covered minute sets once for the Shared column.
+        # Only same-unit pairs can share minutes; bucket first, then intersect.
+        _covered_by_id: dict[str, set[int]] = {}
+        _units_by_id: dict[str, str] = {}
+        for _r in records:
+            _rid = _r.get("id", "")
+            if not _rid:
+                continue
+            _covered_by_id[_rid] = _record_covered_minutes(_r)
+            _units_by_id[_rid] = _r.get("unit_number", "")
+
+        # Fast lookup: for each unit, the set of (rid, covered_set) pairs.
+        _by_unit: dict[str, list[tuple[str, set[int]]]] = {}
+        for _rid, _u in _units_by_id.items():
+            _by_unit.setdefault(_u, []).append((_rid, _covered_by_id[_rid]))
+
+        def _shared_min_total(rid: str) -> int:
+            """Unique minutes this record shares with ANY other record (same unit)."""
+            covered = _covered_by_id.get(rid, set())
+            if not covered:
+                return 0
+            unit = _units_by_id.get(rid, "")
+            overlap = set()
+            for other_rid, other_covered in _by_unit.get(unit, []):
+                if other_rid == rid:
+                    continue
+                overlap |= covered & other_covered
+            return len(overlap)
+
+        # Join shared-minute totals onto the filtered frame.
+        _fdf_with_shared = fdf.copy()
+        _fdf_with_shared["Shared min"] = _fdf_with_shared["_id"].map(_shared_min_total).fillna(0).astype(int)
+
+        flagged = _fdf_with_shared[
+            (_fdf_with_shared["Flags"] != "clean") | (_fdf_with_shared["Out of Season"] == "⚠️")
+        ][["Date", "Patrol", "Unit", "Routes", "Total Hours", "Shared min", "Flags", "Out of Season", "Anomalies"]]
         if flagged.empty:
             st.success("No conflicts or flags in the current filtered set.")
         else:
-            st.warning(f"{len(flagged)} flagged entries require review.")
+            _double_reported_n = int((flagged["Shared min"] > 0).sum())
+            _double_reported_hrs = flagged["Shared min"].sum() / 60
+            if _double_reported_n:
+                st.error(
+                    f"⚠️ **{_double_reported_n} record(s) with shared minutes** — "
+                    f"total {_double_reported_hrs:.2f} hrs of overlap across the flagged set. "
+                    "The Hours by Unit / Route / Patrol views already dedupe these at the "
+                    "minute level, so billing totals are correct. The Anomalies column names "
+                    "the exact time ranges that overlap with each counterpart."
+                )
+            else:
+                st.warning(f"{len(flagged)} flagged entries require review.")
             st.dataframe(flagged, hide_index=True, use_container_width=True)
             st.caption(
+                "**Shared min** = total unique minutes this record overlaps with any other "
+                "same-unit record. A non-zero value means at least part of the operating window "
+                "was also claimed on another form. "
                 "**Flag types:** "
                 "`overlap_confirmed` = time overlap saved by auditor (both sides flagged); "
                 "`multiple_same_day` = multiple forms same unit/date (both sides flagged); "

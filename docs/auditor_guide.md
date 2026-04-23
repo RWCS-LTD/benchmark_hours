@@ -144,7 +144,8 @@ At the end of a winter event, the contract allows up to 30 minutes for the drive
 | 🔴 **NEW WINTER EVENT** | Gap exceeds 3 hours — circuits after this gap belong to a separate event and are excluded from the current total |
 | 🟡 **Capped at 1h** | Gap is between 61–180 min — only 60 min counts; the excess is non-operating |
 | ⚠️ **Overlap** | A circuit's start time is before the previous circuit's end time — check the form for a data entry error |
-| ⚠️ **Duplicate accepted — coexists with id …** | You chose **Accept Both Entries** on a duplicate detection. The other record's short ID is included so you can cross-reference it. |
+| ⚠️ **Duplicate accepted — 240 min shared (08:00-12:00) with id …** | You chose **Accept Both Entries** on a duplicate detection. The message names how many minutes overlap with the counterpart and the exact time range(s) so the double-reported window is visible without opening each record. |
+| ⚠️ **Time overlap — N min shared (…) with id …** | You chose **Save Anyway + Flag as Overlap**. Same shared-minute detail as above. |
 | ⚠️ **Replaced existing record(s): …** | You chose **Replace Existing Entry** on a duplicate detection. The replaced record's short ID is retained for audit history. |
 
 Capped gaps and new winter events affect the operating hours total. An overlap flag means the data needs to be verified before the result can be relied on.
@@ -179,6 +180,14 @@ Common for fragmented contractor forms. Two buttons — **Cancel** or **Confirm 
 Flagged records appear in the **Conflicts & Flags** view in the Cache Viewer, and any injected anomaly strings also appear in the **Anomaly Log** view — both with a legend explaining every flag type.
 
 **Both sides of a conflict are flagged.** When you save a second form that triggers a duplicate, overlap, or same-day prompt, the existing record you were conflicting with is tagged with the same flag and gets a counterpart anomaly pointing back at the new record. That way Conflicts & Flags shows both forms, not just the newer one. Records that were saved before this behavior was introduced can be retroactively tagged with the **🔍 Rescan cache for conflicts** button at the top of the Conflicts & Flags view.
+
+### Shared-minute detection (double-reporting)
+
+The Conflicts & Flags view has a dedicated **Shared min** column. For every flagged record it shows the total unique minutes of operating time that also appear on another same-unit record — i.e. the minutes at risk of being billed twice by the contractor. A non-zero Shared min means at least part of this form's operating window is claimed on another form as well.
+
+**The aggregate Hours views dedupe these minutes at the minute level.** If two circuits partially overlap (08:00-10:00 and 09:30-11:00), the combined operating time counts as 08:00-11:00 = 180 min, never as 120 + 90 = 210. The Hours by Unit / Hours by Route / Hours by Patrol / Overclaim Report views all use this merged view internally. The Overclaim Report's `Excess Hrs` column now reflects real double-reporting; in the past these excess minutes were silently absorbed by the old sum-every-circuit logic.
+
+If you want to see the full shared-minute list across the whole season before billing, open Conflicts & Flags and sort the table descending by **Shared min**. Zero-shared rows are still flagged (e.g. `multiple_same_day` with distinct time windows) but do not carry a double-reporting risk.
 
 ---
 
