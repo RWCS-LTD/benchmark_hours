@@ -183,10 +183,13 @@ def save_benchmarks(config, data: dict, sha) -> str | None:
         return None
 
 
-def push_cache(config, records: list, sha, commit_message: str) -> str | None:
+def push_cache(config, mutator, commit_message: str) -> str | None:
     """
-    Write records to GitHub. Returns new SHA on success, None on failure.
-    Retries once on 409 (concurrent write conflict).
+    Apply `mutator` to the current cache records and PUT the result to GitHub.
+    `mutator` is a callable: list[record] -> list[record]. It is re-applied
+    to a freshly-fetched records list on 409 retry so concurrent writes do
+    not corrupt edits (double-insert) or deletes (un-delete).
+    Returns new SHA on success, None on failure.
     """
     if config is None:
         return None
@@ -213,12 +216,12 @@ def push_cache(config, records: list, sha, commit_message: str) -> str | None:
         return requests.put(url, headers=headers, json=payload, timeout=15)
 
     try:
-        resp = _put(records, sha)
+        base_records, base_sha = load_cache(config)
+        resp = _put(mutator(list(base_records)), base_sha)
         if resp.status_code == 409:
-            # SHA mismatch — re-read and retry once
+            # SHA mismatch — re-read, re-apply mutation, retry once
             fresh_records, fresh_sha = load_cache(config)
-            fresh_records.append(records[-1])   # add only the new record
-            resp = _put(fresh_records, fresh_sha)
+            resp = _put(mutator(list(fresh_records)), fresh_sha)
         resp.raise_for_status()
         return resp.json()["content"]["sha"]
     except requests.exceptions.RequestException as e:
@@ -1496,9 +1499,9 @@ with tab_entry:
             conf_state = st.session_state.sa_conflict_state
             _edit_id   = st.session_state.get("sa_editing_record_id")
 
-            def _do_save_push(gh_cfg, records_to_push, sha, msg, edit_id=None):
-                """Push records and clear caches on success. Returns new sha."""
-                new_sha = push_cache(gh_cfg, records_to_push, sha, msg)
+            def _do_save_push(gh_cfg, mutator, msg, edit_id=None):
+                """Push via mutator and clear caches on success. Returns new sha."""
+                new_sha = push_cache(gh_cfg, mutator, msg)
                 if new_sha:
                     if "sa_cache_data" in st.session_state:
                         del st.session_state["sa_cache_data"]
@@ -1507,11 +1510,17 @@ with tab_entry:
                         st.session_state.sa_editing_record_id = None
                 return new_sha
 
+            def _upsert_mutator(clean_record, edit_id):
+                """Return a mutator that replaces (if edit_id) or appends the record."""
+                def _m(recs):
+                    return [r for r in recs if r.get("id") != edit_id] + [clean_record]
+                return _m
+
             if conf_state is None:
                 _save_lbl = "💾 Save Changes (Replace Record)" if _edit_id else "💾 Save This Entry to Cache"
                 if st.button(_save_lbl, disabled=gh_config is None):
                     with st.spinner("Checking cache for conflicts..."):
-                        existing, sha = load_cache(gh_config)
+                        existing, _sha = load_cache(gh_config)
 
                     # When editing, exclude the old record so it doesn't flag itself
                     existing_for_check = (
@@ -1519,7 +1528,7 @@ with tab_entry:
                         if _edit_id else existing
                     )
 
-                    # Build the pending record
+                    # Build the pending record (no leading-underscore internal fields)
                     pending = {
                         "id":           str(uuid.uuid4()),
                         "saved_at":     datetime.now().isoformat(),
@@ -1556,26 +1565,25 @@ with tab_entry:
                         "max_day_offset":  res["max_day_offset"],
                         "anomalies":       res["anomalies"],
                         "conflict_status": "clean",
-                        "_cache_sha":      sha,
-                        "_existing":       existing_for_check,
-                        "_edit_id":        _edit_id,
                     }
 
                     ctype, crecs = check_conflicts(pending, existing_for_check)
 
                     if ctype == "none":
-                        existing_for_check.append({k: v for k, v in pending.items() if not k.startswith("_")})
                         _msg = (
                             f"Edit record {_edit_id[:8]}: {unit_number} / {','.join(res['routes_used']) or '—'} / {event_start_date}"
                             if _edit_id else
                             f"Add entry: {unit_number} / {','.join(res['routes_used']) or '—'} / {event_start_date}"
                         )
-                        new_sha = _do_save_push(gh_config, existing_for_check, sha, _msg, _edit_id)
+                        new_sha = _do_save_push(
+                            gh_config, _upsert_mutator(pending, _edit_id), _msg, _edit_id
+                        )
                         if new_sha:
                             st.success("✅ Record updated." if _edit_id else "✅ Saved to cache successfully.")
                     else:
                         st.session_state.sa_conflict_state = {
-                            "type": ctype, "records": crecs, "pending": pending
+                            "type": ctype, "records": crecs,
+                            "pending": pending, "edit_id": _edit_id,
                         }
                         st.rerun()
 
@@ -1587,7 +1595,7 @@ with tab_entry:
                 )
                 st.markdown("**Existing conflicting entry:**")
                 for rec in conf_state["records"]:
-                    st.json({k: v for k, v in rec.items() if k not in ("_cache_sha","_existing","_edit_id")})
+                    st.json(rec)
                 if st.button("← Cancel (keep existing)"):
                     st.session_state.sa_conflict_state = None
                     st.rerun()
@@ -1600,7 +1608,7 @@ with tab_entry:
                 )
                 st.markdown("**Conflicting entries:**")
                 for rec in conf_state["records"]:
-                    st.json({k: v for k, v in rec.items() if k not in ("_cache_sha","_existing","_edit_id")})
+                    st.json(rec)
                 ov_col1, ov_col2 = st.columns(2)
                 with ov_col1:
                     if st.button("← Cancel"):
@@ -1608,21 +1616,20 @@ with tab_entry:
                         st.rerun()
                 with ov_col2:
                     if st.button("⚠️ Save Anyway + Flag as Overlap"):
-                        pending = conf_state["pending"]
-                        existing = pending.pop("_existing")
-                        sha = pending.pop("_cache_sha")
-                        eid = pending.pop("_edit_id", None)
+                        pending = dict(conf_state["pending"])
+                        eid = conf_state.get("edit_id")
                         pending["conflict_status"] = "overlap_confirmed"
-                        existing.append(pending)
                         new_sha = _do_save_push(
-                            gh_config, existing, sha,
+                            gh_config, _upsert_mutator(pending, eid),
                             f"{'Edit' if eid else 'Add'} entry (overlap flagged): {unit_number} / {event_start_date}",
-                            eid
+                            eid,
                         )
                         if new_sha:
                             st.success("Saved with overlap flag.")
-                        st.session_state.sa_conflict_state = None
-                        st.rerun()
+                            st.session_state.sa_conflict_state = None
+                            st.rerun()
+                        # On failure: push_cache already displayed st.error; keep
+                        # conflict UI up so the user can retry without losing pending.
 
             elif conf_state["type"] == "same_day_no_overlap":
                 n = len(conf_state["records"])
@@ -1638,21 +1645,20 @@ with tab_entry:
                         st.rerun()
                 with sd_col2:
                     if st.button("✅ Confirm & Save"):
-                        pending = conf_state["pending"]
-                        existing = pending.pop("_existing")
-                        sha = pending.pop("_cache_sha")
-                        eid = pending.pop("_edit_id", None)
+                        pending = dict(conf_state["pending"])
+                        eid = conf_state.get("edit_id")
                         pending["conflict_status"] = "multiple_same_day"
-                        existing.append(pending)
                         new_sha = _do_save_push(
-                            gh_config, existing, sha,
+                            gh_config, _upsert_mutator(pending, eid),
                             f"{'Edit' if eid else 'Add'} entry (multi-form same day): {unit_number} / {event_start_date}",
-                            eid
+                            eid,
                         )
                         if new_sha:
                             st.success("✅ Saved.")
-                        st.session_state.sa_conflict_state = None
-                        st.rerun()
+                            st.session_state.sa_conflict_state = None
+                            st.rerun()
+                        # On failure: push_cache already displayed st.error; keep
+                        # conflict UI up so the user can retry without losing pending.
 
             # ── Download report ───────────────────────────────────────
             st.divider()
@@ -1686,24 +1692,43 @@ with tab_entry:
                     key="sa_dl_btn",
                 )
             with reset_col:
-                if st.button("🔄 New Form", key="sa_reset"):
-                    # Clear all circuit widget keys
+                # on_click callback — runs BEFORE the next render, so writes to
+                # widget-bound keys (sa_continues, sa_patrol, sa_refuel_*, etc.)
+                # are legal. Setting any widget-bound key in an inline post-widget
+                # handler raises StreamlitAPIException.
+                def _do_reset_form():
+                    # Pop per-circuit widget keys for every row currently on screen
                     for _c in st.session_state.sa_circuits:
                         _cid = _c["id"]
-                        for _pfx in ["sa_sh", "sa_sm", "sa_eh", "sa_em", "sa_rt", "sa_tp", "sa_st", "sa_et"]:
+                        for _pfx in ["sa_sh", "sa_sm", "sa_eh", "sa_em",
+                                     "sa_rt", "sa_tp", "sa_st", "sa_et"]:
                             st.session_state.pop(f"{_pfx}_{_cid}", None)
-                    # Increment counter so the fresh circuit gets a never-seen-before ID
+                    # Fresh circuit row with a never-before-used ID
                     st.session_state.sa_circuit_counter += 1
                     _new_id = st.session_state.sa_circuit_counter
                     st.session_state.sa_circuits = [
-                        {"id": _new_id, "start_h": 0, "start_m": 0, "end_h": 0, "end_m": 0,
-                         "route": "", "tow_plow": False}
+                        {"id": _new_id, "start_h": 0, "start_m": 0,
+                         "end_h": 0, "end_m": 0, "route": "", "tow_plow": False}
                     ]
-                    st.session_state.sa_calc_results  = None
-                    st.session_state.sa_conflict_state = None
-                    st.session_state["sa_continues"]  = False
-                    st.session_state.sa_prev_time_mode = st.session_state.sa_time_mode
-                    st.rerun()
+                    # Header widget keys — reset so the form is actually blank
+                    st.session_state["sa_patrol"]       = ""
+                    st.session_state["sa_unit"]         = ""
+                    st.session_state["sa_is_spare"]     = False
+                    st.session_state["sa_primary_unit"] = ""
+                    st.session_state["sa_start_date"]   = date.today()
+                    # End-of-event allowance widgets
+                    st.session_state["sa_refuel_cb"]    = True
+                    st.session_state["sa_refuel_min"]   = 30
+                    # Continues-to-next-form checkbox
+                    st.session_state["sa_continues"]    = False
+                    # Non-widget state
+                    st.session_state.sa_calc_results      = None
+                    st.session_state.sa_conflict_state    = None
+                    st.session_state.sa_editing_record_id = None
+                    # sa_time_mode intentionally preserved (user's format choice)
+                    st.session_state.sa_prev_time_mode    = st.session_state.sa_time_mode
+
+                st.button("🔄 New Form", key="sa_reset", on_click=_do_reset_form)
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -2117,15 +2142,15 @@ with tab_analytics:
                                 yes_col, no_col = st.columns(2)
                                 with yes_col:
                                     if st.button("✅ Yes, Delete", type="primary", key="sa_del_yes"):
-                                        new_records = [r for r in records if r.get("id") != selected_id]
-                                        _, cur_sha = load_cache(gh_config)
                                         commit_msg = (
                                             f"Delete record {selected_id[:8]}: "
                                             f"{rec_to_del.get('unit_number', '?')} / "
                                             f"{','.join(rec_to_del.get('routes_used', [])) or '—'} / "
                                             f"{rec_to_del.get('start_date', '?')} — deleted by auditor"
                                         )
-                                        new_sha = push_cache(gh_config, new_records, cur_sha, commit_msg)
+                                        _del_id = selected_id
+                                        _delete_mutator = lambda recs: [r for r in recs if r.get("id") != _del_id]
+                                        new_sha = push_cache(gh_config, _delete_mutator, commit_msg)
                                         if new_sha:
                                             st.success("✅ Record deleted.")
                                             for k in ("sa_cache_data",):
