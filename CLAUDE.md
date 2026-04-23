@@ -71,7 +71,7 @@ Non-widget session_state (safe to write anywhere):
 | Analytics | `sa_csv_dl`, `sa_dl_rec_{id}`, `sa_oc_csv` | `download_button` | ✅ |
 | Analytics | `sa_bm_add`, `sa_bm_save` | inline, non-widget only | ✅ |
 | Analytics | `sa_edit_load` (📋 Load) | **`on_click=_do_load_edit`** — writes widget-bound keys | ✅ |
-| Analytics | `sa_rowdel_{id}` (per-row 🗑), `sa_del_confirm_tbl`, `sa_del_cancel1_tbl`, `sa_del_yes_tbl`, `sa_del_cancel2_tbl` | inline, non-widget only | ✅ |
+| Analytics | `sa_tbl_select` (st.dataframe single-row selection), `sa_del_btn_tbl`, `sa_del_confirm_tbl`, `sa_del_cancel1_tbl`, `sa_del_yes_tbl`, `sa_del_cancel2_tbl` | inline, non-widget only | ✅ |
 | Entry (duplicate conflict) | `sa_dup_cancel`, `sa_dup_accept_both`, `sa_dup_replace_btn` | inline, non-widget only | ✅ |
 | Guide | `sa_guide_refresh` | inline, non-widget only | ✅ |
 

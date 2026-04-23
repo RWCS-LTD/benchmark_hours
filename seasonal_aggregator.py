@@ -2029,26 +2029,85 @@ with tab_analytics:
     display_df = fdf.drop(columns=["_id"])
 
     if view == "Submissions Table":
-        # ── Password-protected delete confirmation panel ──────────────
-        # Shown at the top of the view when a row's 🗑 button has armed a
-        # delete. Source of truth: sa_pending_delete (record id) and
-        # sa_pending_delete_confirmed (bool).
+        # ── Contained scrollable table with native row selection ──────
+        # Align positional index with the ids list so selection.rows maps
+        # deterministically even when fdf was derived via filtering.
+        _fdf_r = fdf.reset_index(drop=True)
+        _ids_by_pos = _fdf_r["_id"].tolist()
+        _display_df_sel = _fdf_r.drop(columns=["_id"])
+
+        st.caption(
+            f"Showing {len(_fdf_r)} of {len(df)} records. "
+            "Click a row to select it, then use **🗑 Delete selected record** below."
+        )
+
+        if _fdf_r.empty:
+            st.info("No records match the current filters.")
+            _sel_event = None
+        else:
+            _sel_event = st.dataframe(
+                _display_df_sel,
+                use_container_width=True,
+                hide_index=True,
+                height=min(500, 42 + 36 * min(len(_fdf_r), 12)),
+                on_select="rerun",
+                selection_mode="single-row",
+                key="sa_tbl_select",
+            )
+
+        csv = _display_df_sel.to_csv(index=False)
+        st.download_button("⬇ Download Filtered CSV", csv,
+                           "season_filtered.csv", "text/csv", key="sa_csv_dl")
+
+        # ── Selection-driven delete flow ──────────────────────────────
+        _selected_rows = []
+        if _sel_event is not None:
+            try:
+                _selected_rows = list(_sel_event.selection.rows)
+            except Exception:
+                _selected_rows = []
+
+        _selected_id = ""
+        if _selected_rows:
+            _sel_pos = _selected_rows[0]
+            if 0 <= _sel_pos < len(_ids_by_pos):
+                _selected_id = _ids_by_pos[_sel_pos]
+
+        # If the currently-armed pending delete no longer matches selection
+        # (user clicked a different row), clear the pending state so the
+        # confirmation panel tracks the selection.
         _pending_del_id = st.session_state.sa_pending_delete
-        if _pending_del_id:
-            _rec_to_del = next((r for r in records if r.get("id") == _pending_del_id), None)
+        if _pending_del_id and _pending_del_id != _selected_id:
+            st.session_state.sa_pending_delete = None
+            st.session_state.sa_pending_delete_confirmed = False
+            _pending_del_id = None
+
+        st.divider()
+        st.markdown("**🗑 Delete selected record**")
+
+        if not _selected_id:
+            st.caption("Select a row in the table above to enable deletion.")
+        else:
+            _rec_to_del = next((r for r in records if r.get("id") == _selected_id), None)
             if _rec_to_del is None:
-                # Record no longer exists (concurrent delete). Clear state.
-                st.session_state.sa_pending_delete = None
-                st.session_state.sa_pending_delete_confirmed = False
+                st.warning("Selected record no longer exists in the cache.")
             else:
                 _del_label = (
                     f"Unit {_rec_to_del.get('unit_number', '?')} / "
                     f"{', '.join(_rec_to_del.get('routes_used', [])) or '—'} / "
                     f"{_rec_to_del.get('start_date', '?')} / "
-                    f"id:{_pending_del_id[:8]}…"
+                    f"id:{_selected_id[:8]}…"
                 )
 
-                if not st.session_state.sa_pending_delete_confirmed:
+                if _pending_del_id != _selected_id:
+                    # First step: arm the delete.
+                    st.info(f"Selected: **{_del_label}**")
+                    if st.button("🗑 Delete this record", key="sa_del_btn_tbl"):
+                        st.session_state.sa_pending_delete = _selected_id
+                        st.session_state.sa_pending_delete_confirmed = False
+                        st.rerun()
+                elif not st.session_state.sa_pending_delete_confirmed:
+                    # Second step: password.
                     st.warning(f"⚠️ Delete **{_del_label}**? Password required.")
                     _pw_col, _confirm_col, _cancel_col = st.columns([2, 1, 1])
                     with _pw_col:
@@ -2072,17 +2131,18 @@ with tab_analytics:
                             st.session_state.sa_pending_delete_confirmed = False
                             st.rerun()
                 else:
+                    # Third step: final confirm.
                     st.error(f"⚠️ Permanently delete: **{_del_label}**? This cannot be undone.")
                     _yes_col, _no_col = st.columns(2)
                     with _yes_col:
                         if st.button("✅ Yes, Delete", type="primary", key="sa_del_yes_tbl"):
                             _commit_msg = (
-                                f"Delete record {_pending_del_id[:8]}: "
+                                f"Delete record {_selected_id[:8]}: "
                                 f"{_rec_to_del.get('unit_number', '?')} / "
                                 f"{','.join(_rec_to_del.get('routes_used', [])) or '—'} / "
                                 f"{_rec_to_del.get('start_date', '?')} — deleted by auditor"
                             )
-                            _del_id_cap = _pending_del_id
+                            _del_id_cap = _selected_id
                             _delete_mutator_tbl = lambda recs: [r for r in recs if r.get("id") != _del_id_cap]
                             _new_sha = push_cache(gh_config, _delete_mutator_tbl, _commit_msg)
                             if _new_sha:
@@ -2099,51 +2159,6 @@ with tab_analytics:
                             st.session_state.sa_pending_delete = None
                             st.session_state.sa_pending_delete_confirmed = False
                             st.rerun()
-            st.divider()
-
-        # ── Main cache table — rendered row-by-row with per-row delete ─
-        if fdf.empty:
-            st.info("No records match the current filters.")
-        else:
-            _col_weights = [0.9, 1.0, 0.7, 0.7, 2.2, 0.6, 1.3, 1.2, 0.5]
-            _hdrs = ["ID", "Date", "Patrol", "Unit", "Routes", "Hrs", "Flags", "Anomalies", ""]
-            _header_cols = st.columns(_col_weights)
-            for _hc, _ht in zip(_header_cols, _hdrs):
-                _hc.markdown(f"**{_ht}**")
-            st.markdown(
-                "<hr style='margin-top:2px;margin-bottom:4px;border:0;border-top:1px solid #ddd'>",
-                unsafe_allow_html=True,
-            )
-
-            for _, _row in fdf.iterrows():
-                _rid = _row["_id"]
-                _cols = st.columns(_col_weights)
-                _cols[0].caption(_row["ID"])
-                _cols[1].caption(str(_row["Date"]))
-                _cols[2].caption(str(_row["Patrol"]))
-                _cols[3].caption(str(_row["Unit"]))
-                _cols[4].caption(str(_row["Routes"]))
-                _cols[5].caption(f"{_row['Total Hours']}")
-                _flags_val = _row["Flags"]
-                _cols[6].caption(
-                    _flags_val if _flags_val and _flags_val != "clean" else "—"
-                )
-                _anom_val = _row["Anomalies"] or "—"
-                if len(_anom_val) > 60:
-                    _anom_val = _anom_val[:57] + "…"
-                _cols[7].caption(_anom_val)
-                # 🗑 button — arms pending_delete for this id, re-runs so
-                # the confirm panel at the top of this view picks it up.
-                if _cols[8].button("🗑", key=f"sa_rowdel_{_rid}", help="Delete this record"):
-                    st.session_state.sa_pending_delete = _rid
-                    st.session_state.sa_pending_delete_confirmed = False
-                    st.rerun()
-
-        st.caption(f"Showing {len(fdf)} of {len(df)} records.")
-        st.divider()
-        csv = display_df.to_csv(index=False)
-        st.download_button("⬇ Download Filtered CSV", csv,
-                           "season_filtered.csv", "text/csv", key="sa_csv_dl")
 
         # ── Per-row audit report downloads ────────────────────────────
         st.divider()
