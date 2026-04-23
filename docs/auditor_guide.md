@@ -144,8 +144,63 @@ At the end of a winter event, the contract allows up to 30 minutes for the drive
 | 🔴 **NEW WINTER EVENT** | Gap exceeds 3 hours — circuits after this gap belong to a separate event and are excluded from the current total |
 | 🟡 **Capped at 1h** | Gap is between 61–180 min — only 60 min counts; the excess is non-operating |
 | ⚠️ **Overlap** | A circuit's start time is before the previous circuit's end time — check the form for a data entry error |
+| ⚠️ **Duplicate accepted — coexists with id …** | You chose **Accept Both Entries** on a duplicate detection. The other record's short ID is included so you can cross-reference it. |
+| ⚠️ **Replaced existing record(s): …** | You chose **Replace Existing Entry** on a duplicate detection. The replaced record's short ID is retained for audit history. |
 
 Capped gaps and new winter events affect the operating hours total. An overlap flag means the data needs to be verified before the result can be relied on.
+
+---
+
+## When a Duplicate or Overlap is Detected
+
+When you save a form, the tool checks the cache for conflicts with any record that shares the same unit and date. Three outcomes are possible, each with its own prompt:
+
+### 🔴 Duplicate — same unit, same day, matching circuit start times
+
+Shows each existing record in short form (ID · date · unit · patrol · circuits · hours) with a **Show full JSON** expander. You have three choices:
+
+| Button | Effect |
+|--------|--------|
+| **← Cancel (keep existing)** | No save. The new form is discarded from the conflict queue. |
+| **✅ Accept Both Entries** | Both the existing record and the new record are retained in the cache. The new record is flagged `duplicate_confirmed` and an anomaly is injected naming the other record's short ID. Use this when both forms are legitimate partial audits that should roll up together in season totals. |
+| **🔁 Replace Existing Entry** | Password-protected (same deletion password). The conflicting record(s) are removed and the new record takes their place. The new record is flagged `duplicate_replaced` and names the replaced ID(s) in its anomaly list and in the commit message. Use this when the new form is the more complete record and supersedes the old one. |
+
+### 🟡 Time overlap — circuit windows intersect (not identical)
+
+| Button | Effect |
+|--------|--------|
+| **← Cancel** | No save. |
+| **⚠️ Save Anyway + Flag as Overlap** | Both records kept; new record flagged `overlap_confirmed`. The auditor is accepting responsibility for the potential double-count. |
+
+### ℹ️ Same unit/day, no time overlap
+
+Common for fragmented contractor forms. Two buttons — **Cancel** or **Confirm & Save** (flags as `multiple_same_day`).
+
+Flagged records appear in the **Conflicts & Flags** view in the Cache Viewer, and any injected anomaly strings also appear in the **Anomaly Log** view — both with a legend explaining every flag type.
+
+---
+
+## Cache Viewer — Finding and Deleting Records
+
+The Cache Viewer (**📊 Cache Viewer & Analytics** tab) shows every saved record with filters for Patrol, Unit, Route, and date range. Two features help locate records when duplicates or conflicts need reconciling:
+
+- **ID column in the Submissions Table.** Every row displays the record's short ID (first 8 chars of the UUID). The full ID is used when looking a record up by the identifier shown in a conflict prompt.
+- **Find by ID filter.** A text box under the main filters accepts a full UUID or any prefix (e.g. `50cb1eb1`). Matching is case-insensitive.
+
+### Deleting a record
+
+A password-protected delete control sits directly under the Submissions Table. Targets are sourced from the **full cache** — the Patrol/Unit/Route/date filters above the table do **not** hide records from the delete picker, so you cannot accidentally miss the record you want to remove.
+
+Workflow:
+
+1. Switch the view radio to **Submissions Table**.
+2. Scroll down past the CSV download to the **🗑 Delete a record** heading.
+3. Pick the record from the dropdown — labels show `date — unit — patrol — routes (hrs) — id:abc12345…` so same-day/same-unit records are distinguishable by their short ID.
+4. Click **🗑 Delete this record**.
+5. Enter the deletion password and click **Confirm**.
+6. Click **✅ Yes, Delete** on the final confirmation screen.
+
+The delete commits to GitHub in a single operation and names the short ID, date, unit, and routes in the commit message for audit history.
 
 ---
 
@@ -202,6 +257,9 @@ Yes, for HHMM and HH:MM formats, always use two digits for both hours and minute
 
 | Date | Change |
 |------|--------|
+| 2026-04 | Duplicate-detection buttons added: **✅ Accept Both Entries** and **🔁 Replace Existing Entry** (password-protected) — previously the only option was Cancel. Both actions inject an anomaly string naming the counterpart record's short ID so the audit trail is preserved. New flag types `duplicate_confirmed` and `duplicate_replaced` are now listed in the Conflicts & Flags legend. |
+| 2026-04 | Cache Viewer: **ID column** added to the Submissions Table (first 8 chars of each record's UUID). **Find by ID** text filter added under the main filter row — accepts full UUID or any prefix, case-insensitive. |
+| 2026-04 | Per-row **🗑 Delete a record** control hoisted to sit directly under the Submissions Table, password-protected. Delete picker is sourced from the full cache (active filters no longer hide records from deletion). The old "Delete a Record" expander was removed. |
 | 2026-04 | "Continues to next form" checkbox added — defers end-of-event refuel to the continuation form. Audit report shows a banner and explicit deferred-refuel line when checked. Overclaim Report simplified: dollar-rate columns removed, excess hours only. Chain-level refuel calculation updated to handle continues flag correctly. |
 | 2026-04 | Time entry format toggle added: choose between HHMM, HH:MM, or separate H/M boxes. Default is HHMM. New Form button fully clears all fields. Add Circuit button reliably initialises fresh fields without requiring a browser refresh. |
 | 2026-04 | Initial release — circuit entry, overnight detection, gap analysis, HTML audit report download. |

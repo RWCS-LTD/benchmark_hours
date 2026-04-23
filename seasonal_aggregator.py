@@ -1593,12 +1593,86 @@ with tab_entry:
                     f"{event_start_date} with matching circuit start times. "
                     f"This entry has **not** been saved."
                 )
-                st.markdown("**Existing conflicting entry:**")
+                st.markdown("**Existing conflicting entry(ies):**")
                 for rec in conf_state["records"]:
-                    st.json(rec)
-                if st.button("← Cancel (keep existing)"):
-                    st.session_state.sa_conflict_state = None
-                    st.rerun()
+                    _summ = (
+                        f"`{rec.get('id','')[:8]}…` — "
+                        f"{rec.get('start_date','?')} / Unit {rec.get('unit_number','?')} / "
+                        f"Patrol {rec.get('patrol_number','?')} / "
+                        f"{len(rec.get('circuits', []))} circuit(s) / "
+                        f"{round(rec.get('total_operating_minutes',0)/60, 2)} hrs"
+                    )
+                    st.markdown(f"- {_summ}")
+                    with st.expander("Show full JSON"):
+                        st.json(rec)
+
+                dup_col1, dup_col2, dup_col3 = st.columns(3)
+                with dup_col1:
+                    if st.button("← Cancel (keep existing)", key="sa_dup_cancel"):
+                        st.session_state.sa_conflict_state = None
+                        st.rerun()
+                with dup_col2:
+                    if st.button("✅ Accept Both Entries", key="sa_dup_accept_both"):
+                        pending = dict(conf_state["pending"])
+                        eid = conf_state.get("edit_id")
+                        pending["conflict_status"] = "duplicate_confirmed"
+                        # Inject anomaly string pointing back to the other side(s)
+                        _other_ids = ", ".join(
+                            r.get("id", "")[:8] + "…" for r in conf_state["records"]
+                        )
+                        _anom = f"⚠️ Duplicate accepted — coexists with id {_other_ids}"
+                        pending["anomalies"] = list(pending.get("anomalies") or []) + [_anom]
+                        new_sha = _do_save_push(
+                            gh_config, _upsert_mutator(pending, eid),
+                            f"{'Edit' if eid else 'Add'} entry (duplicate accepted, both retained): {unit_number} / {event_start_date}",
+                            eid,
+                        )
+                        if new_sha:
+                            st.success("✅ Both entries retained. New record flagged `duplicate_confirmed`.")
+                            st.session_state.sa_conflict_state = None
+                            st.rerun()
+                        # On failure: push_cache already displayed st.error; keep
+                        # conflict UI up so the user can retry without losing pending.
+                with dup_col3:
+                    st.markdown("**🔁 Replace Existing**")
+                    _pw = st.text_input(
+                        "Deletion password",
+                        type="password",
+                        key="sa_dup_replace_pw",
+                        label_visibility="collapsed",
+                        placeholder="Password",
+                    )
+                    if st.button("Replace Existing Entry", key="sa_dup_replace_btn"):
+                        if _pw != "benchmark":
+                            st.error("Incorrect password.")
+                        else:
+                            pending = dict(conf_state["pending"])
+                            eid = conf_state.get("edit_id")
+                            pending["conflict_status"] = "duplicate_replaced"
+                            _replaced_ids = [r.get("id", "") for r in conf_state["records"]]
+                            _replaced_short = ", ".join(i[:8] + "…" for i in _replaced_ids)
+                            _anom = f"⚠️ Replaced existing record(s): {_replaced_short}"
+                            pending["anomalies"] = list(pending.get("anomalies") or []) + [_anom]
+
+                            # Mutator removes edit target + every conflicting record, then appends pending.
+                            _drop_ids = set(_replaced_ids)
+                            if eid:
+                                _drop_ids.add(eid)
+
+                            def _replace_mutator(recs, _drop=_drop_ids, _new=pending):
+                                return [r for r in recs if r.get("id") not in _drop] + [_new]
+
+                            _commit_msg = (
+                                f"Replace record(s) [{_replaced_short}] with new entry: "
+                                f"{unit_number} / {event_start_date} — replaced by auditor"
+                            )
+                            new_sha = _do_save_push(
+                                gh_config, _replace_mutator, _commit_msg, eid,
+                            )
+                            if new_sha:
+                                st.success(f"✅ Replaced {len(_replaced_ids)} existing record(s). New entry flagged `duplicate_replaced`.")
+                                st.session_state.sa_conflict_state = None
+                                st.rerun()
 
             elif conf_state["type"] == "overlap":
                 st.warning(
@@ -1608,7 +1682,16 @@ with tab_entry:
                 )
                 st.markdown("**Conflicting entries:**")
                 for rec in conf_state["records"]:
-                    st.json(rec)
+                    _summ = (
+                        f"`{rec.get('id','')[:8]}…` — "
+                        f"{rec.get('start_date','?')} / Unit {rec.get('unit_number','?')} / "
+                        f"Patrol {rec.get('patrol_number','?')} / "
+                        f"{len(rec.get('circuits', []))} circuit(s) / "
+                        f"{round(rec.get('total_operating_minutes',0)/60, 2)} hrs"
+                    )
+                    st.markdown(f"- {_summ}")
+                    with st.expander("Show full JSON"):
+                        st.json(rec)
                 ov_col1, ov_col2 = st.columns(2)
                 with ov_col1:
                     if st.button("← Cancel"):
@@ -1638,6 +1721,18 @@ with tab_entry:
                     f"with **no time overlap**. This is normal for fragmented contractor forms. "
                     f"Both entries will be included in season totals."
                 )
+                st.markdown("**Same-day entries:**")
+                for rec in conf_state["records"]:
+                    _summ = (
+                        f"`{rec.get('id','')[:8]}…` — "
+                        f"{rec.get('start_date','?')} / Unit {rec.get('unit_number','?')} / "
+                        f"Patrol {rec.get('patrol_number','?')} / "
+                        f"{len(rec.get('circuits', []))} circuit(s) / "
+                        f"{round(rec.get('total_operating_minutes',0)/60, 2)} hrs"
+                    )
+                    st.markdown(f"- {_summ}")
+                    with st.expander("Show full JSON"):
+                        st.json(rec)
                 sd_col1, sd_col2 = st.columns(2)
                 with sd_col1:
                     if st.button("← Cancel"):
@@ -1792,7 +1887,9 @@ with tab_analytics:
     for r in records:
         routes_str = ", ".join(r.get("routes_used", [])) or "—"
         hours = r.get("total_operating_minutes", 0) / 60
+        _rid = r.get("id", "")
         rows.append({
+            "ID":           (_rid[:8] + "…") if _rid else "",
             "Date":         r.get("start_date", ""),
             "Patrol":       r.get("patrol_number", ""),
             "Unit":         r.get("unit_number", ""),
@@ -1805,7 +1902,7 @@ with tab_analytics:
             "Out of Season":"⚠️" if r.get("out_of_season") else "",
             "Flags":        r.get("conflict_status", "clean"),
             "Anomalies":    "; ".join(r.get("anomalies", [])) or "",
-            "_id":          r.get("id", ""),
+            "_id":          _rid,
         })
     df = pd.DataFrame(rows)
 
@@ -1830,6 +1927,12 @@ with tab_analytics:
     with f5:
         f_date_to = st.date_input("To", value=max_date, key="sa_f_to")
 
+    f_id = st.text_input(
+        "Find by ID (full UUID or prefix)",
+        key="sa_f_id",
+        placeholder="e.g. 50cb1eb1  or  50cb1eb1-f926-4166-a27b-130205406a0c",
+    ).strip().lower()
+
     # Apply filters
     fdf = df.copy()
     if f_patrol != "All":
@@ -1842,6 +1945,8 @@ with tab_analytics:
         (pd.to_datetime(fdf["Date"]).dt.date >= f_date_from) &
         (pd.to_datetime(fdf["Date"]).dt.date <= f_date_to)
     ]
+    if f_id:
+        fdf = fdf[fdf["_id"].str.lower().str.contains(f_id, na=False)]
 
     st.caption(f"Showing {len(fdf)} of {len(df)} entries")
     st.divider()
@@ -1928,6 +2033,104 @@ with tab_analytics:
         csv = display_df.to_csv(index=False)
         st.download_button("⬇ Download Filtered CSV", csv,
                            "season_filtered.csv", "text/csv", key="sa_csv_dl")
+
+        # ── Per-row delete (password-protected) ──────────────────────
+        st.divider()
+        st.markdown("**🗑 Delete a record**")
+        st.caption(
+            "Targets are sourced from the full cache (not the filtered view) so active "
+            "filters cannot hide a record. Password required."
+        )
+        if df.empty:
+            st.info("No records to delete.")
+        else:
+            # Sort options: newest date first so recent entries are easy to find.
+            _sorted_df = df.sort_values(["Date", "Unit"], ascending=[False, True])
+            del_options_tbl = {}
+            for _, _row in _sorted_df.iterrows():
+                _label_tbl = (
+                    f"{_row['Date']} — Unit {_row['Unit']} — Patrol {_row['Patrol']} — "
+                    f"{_row['Routes']} ({_row['Total Hours']} hrs) — id:{_row['_id'][:8]}…"
+                )
+                del_options_tbl[_label_tbl] = _row["_id"]
+
+            selected_label_tbl = st.selectbox(
+                "Select record to delete",
+                list(del_options_tbl.keys()),
+                key="sa_del_select_tbl",
+            )
+            selected_id_tbl = del_options_tbl.get(selected_label_tbl, "")
+
+            if selected_id_tbl:
+                pending_id_tbl = st.session_state.sa_pending_delete
+
+                if pending_id_tbl != selected_id_tbl:
+                    if st.button("🗑 Delete this record", key="sa_del_btn_tbl"):
+                        st.session_state.sa_pending_delete = selected_id_tbl
+                        st.session_state.sa_pending_delete_confirmed = False
+                        st.rerun()
+                else:
+                    if not st.session_state.sa_pending_delete_confirmed:
+                        st.warning("⚠️ This action is permanent and cannot be undone.")
+                        pw_col_t, confirm_col_t, cancel_col_t = st.columns([2, 1, 1])
+                        with pw_col_t:
+                            pw_t = st.text_input(
+                                "Enter deletion password",
+                                type="password",
+                                key="sa_del_pw_tbl",
+                            )
+                        with confirm_col_t:
+                            st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
+                            if st.button("Confirm", key="sa_del_confirm_tbl"):
+                                if pw_t == "benchmark":
+                                    st.session_state.sa_pending_delete_confirmed = True
+                                    st.rerun()
+                                else:
+                                    st.error("Incorrect password.")
+                        with cancel_col_t:
+                            st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
+                            if st.button("Cancel", key="sa_del_cancel1_tbl"):
+                                st.session_state.sa_pending_delete = None
+                                st.session_state.sa_pending_delete_confirmed = False
+                                st.rerun()
+                    else:
+                        rec_to_del_tbl = next((r for r in records if r.get("id") == selected_id_tbl), None)
+                        if rec_to_del_tbl:
+                            del_label_tbl = (
+                                f"Unit {rec_to_del_tbl.get('unit_number', '?')} / "
+                                f"{', '.join(rec_to_del_tbl.get('routes_used', [])) or '—'} / "
+                                f"{rec_to_del_tbl.get('start_date', '?')}"
+                            )
+                            st.error(f"⚠️ Permanently delete: **{del_label_tbl}**? This cannot be undone.")
+                            yes_col_t, no_col_t = st.columns(2)
+                            with yes_col_t:
+                                if st.button("✅ Yes, Delete", type="primary", key="sa_del_yes_tbl"):
+                                    commit_msg_tbl = (
+                                        f"Delete record {selected_id_tbl[:8]}: "
+                                        f"{rec_to_del_tbl.get('unit_number', '?')} / "
+                                        f"{','.join(rec_to_del_tbl.get('routes_used', [])) or '—'} / "
+                                        f"{rec_to_del_tbl.get('start_date', '?')} — deleted by auditor"
+                                    )
+                                    _del_id_tbl = selected_id_tbl
+                                    _delete_mutator_tbl = lambda recs: [r for r in recs if r.get("id") != _del_id_tbl]
+                                    new_sha_tbl = push_cache(gh_config, _delete_mutator_tbl, commit_msg_tbl)
+                                    if new_sha_tbl:
+                                        st.success("✅ Record deleted.")
+                                        for k in ("sa_cache_data",):
+                                            if k in st.session_state:
+                                                del st.session_state[k]
+                                        st.session_state.sa_chain_cache = None
+                                        st.session_state.sa_pending_delete = None
+                                        st.session_state.sa_pending_delete_confirmed = False
+                                        st.rerun()
+                                    else:
+                                        if st.button("🔄 Retry", key="sa_del_retry_tbl"):
+                                            st.rerun()
+                            with no_col_t:
+                                if st.button("Cancel", key="sa_del_cancel2_tbl"):
+                                    st.session_state.sa_pending_delete = None
+                                    st.session_state.sa_pending_delete_confirmed = False
+                                    st.rerun()
 
         # ── Per-row audit report downloads ────────────────────────────
         st.divider()
@@ -2087,89 +2290,6 @@ with tab_analytics:
 
         if st.session_state.pop("sa_just_loaded", False):
             st.success("✅ Record loaded — switch to the **📝 Entry & Calculate** tab to review and edit.")
-
-        with st.expander("🗑 Delete a Record"):
-            if fdf.empty:
-                st.info("No records to delete.")
-            else:
-                del_options = {}
-                for _, row in fdf.iterrows():
-                    label = f"{row['Date']} — {row['Unit']} — {row['Routes']} ({row['Total Hours']} hrs)"
-                    del_options[label] = row["_id"]
-
-                selected_label = st.selectbox(
-                    "Select record to delete", list(del_options.keys()), key="sa_del_select"
-                )
-                selected_id = del_options.get(selected_label, "")
-
-                if selected_id:
-                    pending_id = st.session_state.sa_pending_delete
-
-                    if pending_id != selected_id:
-                        if st.button("🗑 Delete this record", key="sa_del_btn"):
-                            st.session_state.sa_pending_delete = selected_id
-                            st.session_state.sa_pending_delete_confirmed = False
-                            st.rerun()
-                    else:
-                        if not st.session_state.sa_pending_delete_confirmed:
-                            st.warning("⚠️ This action is permanent and cannot be undone.")
-                            pw_col, confirm_col, cancel_col = st.columns([2, 1, 1])
-                            with pw_col:
-                                pw = st.text_input("Enter deletion password", type="password", key="sa_del_pw")
-                            with confirm_col:
-                                st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
-                                if st.button("Confirm", key="sa_del_confirm"):
-                                    if pw == "benchmark":
-                                        st.session_state.sa_pending_delete_confirmed = True
-                                        st.rerun()
-                                    else:
-                                        st.error("Incorrect password.")
-                            with cancel_col:
-                                st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
-                                if st.button("Cancel", key="sa_del_cancel1"):
-                                    st.session_state.sa_pending_delete = None
-                                    st.session_state.sa_pending_delete_confirmed = False
-                                    st.rerun()
-                        else:
-                            rec_to_del = next((r for r in records if r.get("id") == selected_id), None)
-                            if rec_to_del:
-                                del_label = (
-                                    f"Unit {rec_to_del.get('unit_number', '?')} / "
-                                    f"{', '.join(rec_to_del.get('routes_used', [])) or '—'} / "
-                                    f"{rec_to_del.get('start_date', '?')}"
-                                )
-                                st.error(f"⚠️ Permanently delete: **{del_label}**? This cannot be undone.")
-                                yes_col, no_col = st.columns(2)
-                                with yes_col:
-                                    if st.button("✅ Yes, Delete", type="primary", key="sa_del_yes"):
-                                        commit_msg = (
-                                            f"Delete record {selected_id[:8]}: "
-                                            f"{rec_to_del.get('unit_number', '?')} / "
-                                            f"{','.join(rec_to_del.get('routes_used', [])) or '—'} / "
-                                            f"{rec_to_del.get('start_date', '?')} — deleted by auditor"
-                                        )
-                                        _del_id = selected_id
-                                        _delete_mutator = lambda recs: [r for r in recs if r.get("id") != _del_id]
-                                        new_sha = push_cache(gh_config, _delete_mutator, commit_msg)
-                                        if new_sha:
-                                            st.success("✅ Record deleted.")
-                                            for k in ("sa_cache_data",):
-                                                if k in st.session_state:
-                                                    del st.session_state[k]
-                                            st.session_state.sa_chain_cache = None
-                                            st.session_state.sa_pending_delete = None
-                                            st.session_state.sa_pending_delete_confirmed = False
-                                            st.rerun()
-                                        else:
-                                            col1, col2 = st.columns(2)
-                                            with col2:
-                                                if st.button("🔄 Retry", key="sa_del_retry"):
-                                                    st.rerun()
-                                with no_col:
-                                    if st.button("Cancel", key="sa_del_cancel2"):
-                                        st.session_state.sa_pending_delete = None
-                                        st.session_state.sa_pending_delete_confirmed = False
-                                        st.rerun()
 
     elif view == "Hours by Unit":
         # Chain-based aggregation: refuel counted once per event, cross-form gaps capped correctly
@@ -2411,9 +2531,12 @@ with tab_analytics:
             st.warning(f"{len(flagged)} flagged entries require review.")
             st.dataframe(flagged, hide_index=True, use_container_width=True)
             st.caption(
-                "**Flag types:** `overlap_confirmed` = time overlap saved by auditor; "
+                "**Flag types:** "
+                "`overlap_confirmed` = time overlap saved by auditor; "
                 "`multiple_same_day` = multiple forms same unit/date; "
-                "`spare_overlap` = spare + primary both on same date."
+                "`spare_overlap` = spare + primary both on same date; "
+                "`duplicate_confirmed` = duplicate detected, auditor chose to retain both forms; "
+                "`duplicate_replaced` = duplicate detected, this new record replaced one or more prior entries."
             )
 
     elif view == "Timeline":
