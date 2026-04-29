@@ -239,13 +239,16 @@ def save_benchmarks(config, data: dict, sha) -> str | None:
         return None
 
 
-def push_cache(config, mutator, commit_message: str) -> str | None:
+def push_cache(config, mutator, commit_message: str) -> tuple[str, list] | None:
     """
     Apply `mutator` to the current cache records and PUT the result to GitHub.
     `mutator` is a callable: list[record] -> list[record]. It is re-applied
     to a freshly-fetched records list on 409 retry so concurrent writes do
     not corrupt edits (double-insert) or deletes (un-delete).
-    Returns new SHA on success, None on failure.
+
+    Returns (new_sha, post_mutator_records) on success, None on failure.
+    Callers should update their in-memory cache (sa_cache_data) with
+    post_mutator_records rather than re-fetching from GitHub.
     """
     if config is None:
         return None
@@ -273,13 +276,17 @@ def push_cache(config, mutator, commit_message: str) -> str | None:
 
     try:
         base_records, base_sha = load_cache(config)
-        resp = _put(mutator(list(base_records)), base_sha)
+        applied_records = mutator(list(base_records))
+        resp = _put(applied_records, base_sha)
         if resp.status_code == 409:
-            # SHA mismatch — re-read, re-apply mutation, retry once
+            # SHA mismatch — re-read, re-apply mutation, retry once.
+            # Reassign applied_records explicitly so the returned value
+            # is the records list that was actually committed.
             fresh_records, fresh_sha = load_cache(config)
-            resp = _put(mutator(list(fresh_records)), fresh_sha)
+            applied_records = mutator(list(fresh_records))
+            resp = _put(applied_records, fresh_sha)
         resp.raise_for_status()
-        return resp.json()["content"]["sha"]
+        return resp.json()["content"]["sha"], applied_records
     except requests.exceptions.RequestException as e:
         st.error(f"GitHub write error: {e}")
         return None
@@ -1507,13 +1514,40 @@ def fmt_hhmm(minutes: int) -> str:
 st.title("📋 Seasonal Benchmark Hours Aggregator")
 st.caption("Winter Vehicle Operating Hours — Cache & Analytics")
 
+# ── Hoisted module-scope: GitHub config + cache loaders ───────────────
+# These run on every outer rerun (NOT inside any fragment), so both the
+# Entry and Analytics fragments can read sa_cache_data / sa_benchmarks
+# regardless of which tab the user lands on first. Keep one-shot gates
+# on session_state presence — same logic as before, just hoisted out of
+# the Analytics tab body.
+gh_config = get_github_config()
+if gh_config is None:
+    st.warning(
+        "GitHub cache not configured. Add `[github]` section to Streamlit secrets "
+        "to enable. See the plan documentation for required keys."
+    )
+    st.stop()
+
+if "sa_cache_data" not in st.session_state:
+    with st.spinner("Loading cache from GitHub..."):
+        records, _ = load_cache(gh_config)
+        st.session_state.sa_cache_data = records
+
+if not st.session_state.get("sa_benchmarks_loaded", False):
+    with st.spinner("Loading benchmarks..."):
+        bm_data, bm_sha = load_benchmarks(gh_config)
+        st.session_state.sa_benchmarks       = bm_data
+        st.session_state.sa_benchmarks_sha   = bm_sha
+        st.session_state.sa_benchmarks_loaded = True
+
 tab_entry, tab_analytics, tab_guide = st.tabs(["📝 Entry & Calculate", "📊 Cache Viewer & Analytics", "📖 Auditor Guide"])
 
 
 # ───────────────────────────────────────────────────────────────────
 # TAB 1: ENTRY & CALCULATE
 # ───────────────────────────────────────────────────────────────────
-with tab_entry:
+@st.fragment
+def render_entry_tab():
 
     # ── Edit mode banner ──────────────────────────────────────────────
     _edit_id = st.session_state.get("sa_editing_record_id")
@@ -1528,7 +1562,7 @@ with tab_entry:
             st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
             if st.button("✖ Cancel Edit", key="sa_cancel_edit"):
                 st.session_state.sa_editing_record_id = None
-                st.rerun()
+                st.rerun(scope="app")
 
     with st.expander("ℹ️ Contract Rules"):
         st.markdown("""
@@ -1648,7 +1682,7 @@ with tab_entry:
             with col_del:
                 if st.button("🗑", key=f"sa_rm_{cid}", disabled=len(st.session_state.sa_circuits) == 1):
                     sa_remove_circuit(i)
-                    st.rerun()
+                    st.rerun(scope="app")
 
         elif sa_mode == "HHMM (e.g. 0930)":
             if f"sa_st_{cid}" not in st.session_state:
@@ -1691,7 +1725,7 @@ with tab_entry:
             with col_del:
                 if st.button("🗑", key=f"sa_rm_{cid}", disabled=len(st.session_state.sa_circuits) == 1):
                     sa_remove_circuit(i)
-                    st.rerun()
+                    st.rerun(scope="app")
 
         else:
             # HH:MM mode — single box, type 4 digits, auto-formats to HH:MM on tab-away
@@ -1739,11 +1773,11 @@ with tab_entry:
             with col_del:
                 if st.button("🗑", key=f"sa_rm_{cid}", disabled=len(st.session_state.sa_circuits) == 1):
                     sa_remove_circuit(i)
-                    st.rerun()
+                    st.rerun(scope="app")
 
     if st.button("➕ Add Circuit"):
         sa_add_circuit()
-        st.rerun()
+        st.rerun(scope="app")
 
     # ── End-of-event allowance ────────────────────────────────────────
     st.divider()
@@ -2006,26 +2040,30 @@ with tab_entry:
             )
 
             # ── Save to Cache ─────────────────────────────────────────
+            # gh_config is hoisted to module scope; st.stop() at module
+            # level ensures we never reach here with gh_config is None.
             st.divider()
             st.subheader("💾 Save to Cache")
-
-            gh_config = get_github_config()
-            if gh_config is None:
-                st.warning("GitHub not configured — cache saving is disabled. Set secrets to enable.")
 
             conf_state = st.session_state.sa_conflict_state
             _edit_id   = st.session_state.get("sa_editing_record_id")
 
             def _do_save_push(gh_cfg, mutator, msg, edit_id=None):
-                """Push via mutator and clear caches on success. Returns new sha."""
-                new_sha = push_cache(gh_cfg, mutator, msg)
-                if new_sha:
-                    if "sa_cache_data" in st.session_state:
-                        del st.session_state["sa_cache_data"]
-                    st.session_state.sa_chain_cache = None
-                    st.session_state.sa_analytics_view = None
-                    if edit_id:
-                        st.session_state.sa_editing_record_id = None
+                """Push via mutator and update caches in place. Returns new sha.
+
+                Callers see the original Optional[str] contract — the records
+                list returned by push_cache is consumed internally to update
+                sa_cache_data, avoiding a follow-up GitHub re-fetch.
+                """
+                result = push_cache(gh_cfg, mutator, msg)
+                if result is None:
+                    return None
+                new_sha, new_records = result
+                st.session_state.sa_cache_data     = new_records
+                st.session_state.sa_chain_cache    = None
+                st.session_state.sa_analytics_view = None
+                if edit_id:
+                    st.session_state.sa_editing_record_id = None
                 return new_sha
 
             def _upsert_mutator(clean_record, edit_id):
@@ -2191,7 +2229,7 @@ with tab_entry:
                             "pending": pending, "edit_id": _edit_id,
                         }
                         st.session_state.sa_dup_replace_armed_target = None
-                        st.rerun()
+                        st.rerun(scope="app")
 
             elif conf_state["type"] == "duplicate":
                 st.error(
@@ -2218,7 +2256,7 @@ with tab_entry:
                     if st.button("← Cancel (keep existing)", key="sa_dup_cancel"):
                         st.session_state.sa_conflict_state = None
                         st.session_state.sa_dup_replace_armed_target = None
-                        st.rerun()
+                        st.rerun(scope="app")
                 with dup_col2:
                     if st.button("✅ Accept Both Entries",
                                  key="sa_dup_accept_both", type="primary"):
@@ -2263,7 +2301,7 @@ with tab_entry:
                             st.success("✅ Both entries retained and flagged `duplicate_confirmed` with shared-minute detail.")
                             st.session_state.sa_conflict_state = None
                             st.session_state.sa_dup_replace_armed_target = None
-                            st.rerun()
+                            st.rerun(scope="app")
                         # On failure: push_cache already displayed st.error; keep
                         # conflict UI up so the user can retry without losing pending.
 
@@ -2328,7 +2366,7 @@ with tab_entry:
                                 st.error("Incorrect password. Destructive action not armed.")
                             else:
                                 st.session_state.sa_dup_replace_armed_target = _cp_ids_sorted
-                                st.rerun()
+                                st.rerun(scope="app")
                     else:
                         # Final confirmation layer.
                         st.error(
@@ -2374,11 +2412,11 @@ with tab_entry:
                                     )
                                     st.session_state.sa_conflict_state = None
                                     st.session_state.sa_dup_replace_armed_target = None
-                                    st.rerun()
+                                    st.rerun(scope="app")
                         with _fc2:
                             if st.button("← No, cancel", key=_no_key):
                                 st.session_state.sa_dup_replace_armed_target = None
-                                st.rerun()
+                                st.rerun(scope="app")
 
             elif conf_state["type"] == "overlap":
                 st.warning(
@@ -2402,7 +2440,7 @@ with tab_entry:
                 with ov_col1:
                     if st.button("← Cancel"):
                         st.session_state.sa_conflict_state = None
-                        st.rerun()
+                        st.rerun(scope="app")
                 with ov_col2:
                     if st.button("⚠️ Save Anyway + Flag as Overlap"):
                         pending = dict(conf_state["pending"])
@@ -2445,7 +2483,7 @@ with tab_entry:
                         if new_sha:
                             st.success("Saved with overlap flag; counterpart record(s) also flagged with shared-minute detail.")
                             st.session_state.sa_conflict_state = None
-                            st.rerun()
+                            st.rerun(scope="app")
                         # On failure: push_cache already displayed st.error; keep
                         # conflict UI up so the user can retry without losing pending.
 
@@ -2472,7 +2510,7 @@ with tab_entry:
                 with sd_col1:
                     if st.button("← Cancel"):
                         st.session_state.sa_conflict_state = None
-                        st.rerun()
+                        st.rerun(scope="app")
                 with sd_col2:
                     if st.button("✅ Confirm & Save"):
                         pending = dict(conf_state["pending"])
@@ -2518,7 +2556,7 @@ with tab_entry:
                         if new_sha:
                             st.success("✅ Saved. Counterpart record(s) also flagged.")
                             st.session_state.sa_conflict_state = None
-                            st.rerun()
+                            st.rerun(scope="app")
                         # On failure: push_cache already displayed st.error; keep
                         # conflict UI up so the user can retry without losing pending.
 
@@ -2564,16 +2602,13 @@ with tab_entry:
 # ───────────────────────────────────────────────────────────────────
 # TAB 2: CACHE VIEWER & ANALYTICS
 # ───────────────────────────────────────────────────────────────────
-with tab_analytics:
+@st.fragment
+def render_analytics_tab():
     st.subheader("Cache Viewer & Analytics")
 
-    gh_config = get_github_config()
-    if gh_config is None:
-        st.warning(
-            "GitHub cache not configured. Add `[github]` section to Streamlit secrets to enable. "
-            "See the plan documentation for required keys."
-        )
-        st.stop()
+    # gh_config + sa_cache_data + sa_benchmarks_loaded are hoisted to
+    # module scope. Refresh Cache stays here — clearing the keys then
+    # st.rerun(scope="app") forces the hoisted loaders to re-fetch on the next run.
 
     if st.button("🔄 Refresh Cache", key="sa_refresh"):
         for k in ("sa_cache_data", "sa_benchmarks_loaded"):
@@ -2583,25 +2618,13 @@ with tab_analytics:
         st.session_state.sa_benchmarks_sha = None
         st.session_state.sa_chain_cache = None
         st.session_state.sa_analytics_view = None
-        st.rerun()
-
-    if "sa_cache_data" not in st.session_state:
-        with st.spinner("Loading cache from GitHub..."):
-            records, _ = load_cache(gh_config)
-            st.session_state.sa_cache_data = records
-
-    if not st.session_state.get("sa_benchmarks_loaded", False):
-        with st.spinner("Loading benchmarks..."):
-            bm_data, bm_sha = load_benchmarks(gh_config)
-            st.session_state.sa_benchmarks = bm_data
-            st.session_state.sa_benchmarks_sha = bm_sha
-            st.session_state.sa_benchmarks_loaded = True
+        st.rerun(scope="app")
 
     records = st.session_state.sa_cache_data
 
     if not records:
         st.info("No entries in cache yet. Use the Entry tab to add form data.")
-        st.stop()
+        return  # exit fragment only — st.stop() would halt the whole app
 
     # ── Event Chain Cache ─────────────────────────────────────────────
     _ck = _get_chain_cache_key(records)
@@ -2708,7 +2731,7 @@ with tab_analytics:
                 if new_rt_id.strip():
                     safe_bm[new_rt_id.strip()] = new_rt_hrs
                     st.session_state.sa_benchmarks = safe_bm
-                    st.rerun()
+                    st.rerun(scope="app")
 
         if st.button("💾 Save Overrides to GitHub", key="sa_bm_save"):
             # Only save values that differ from the contract table (true overrides)
@@ -2721,7 +2744,7 @@ with tab_analytics:
                 st.session_state.sa_benchmarks = overrides_only
                 st.session_state.sa_benchmarks_sha = new_sha
                 st.toast(f"{len(overrides_only)} override(s) saved to GitHub.", icon="✅")
-                st.rerun()
+                st.rerun(scope="app")
 
     st.divider()
 
@@ -2902,7 +2925,7 @@ with tab_analytics:
                         if st.button("🗑 Delete this record", key="sa_del_btn_tbl"):
                             st.session_state.sa_pending_delete = _selected_id
                             st.session_state.sa_pending_delete_confirmed = False
-                            st.rerun()
+                            st.rerun(scope="app")
                 elif not st.session_state.sa_pending_delete_confirmed:
                     # Second step: password.
                     st.warning(f"⚠️ Delete **{_del_label}**? Password required.")
@@ -2918,7 +2941,7 @@ with tab_analytics:
                         if st.button("Confirm", key="sa_del_confirm_tbl"):
                             if _pw_val == "benchmark":
                                 st.session_state.sa_pending_delete_confirmed = True
-                                st.rerun()
+                                st.rerun(scope="app")
                             else:
                                 st.error("Incorrect password.")
                     with _cancel_col:
@@ -2926,7 +2949,7 @@ with tab_analytics:
                         if st.button("Cancel", key="sa_del_cancel1_tbl"):
                             st.session_state.sa_pending_delete = None
                             st.session_state.sa_pending_delete_confirmed = False
-                            st.rerun()
+                            st.rerun(scope="app")
                 else:
                     # Third step: final confirm.
                     st.error(f"⚠️ Permanently delete: **{_del_label}**? This cannot be undone.")
@@ -2941,22 +2964,21 @@ with tab_analytics:
                             )
                             _del_id_cap = _selected_id
                             _delete_mutator_tbl = lambda recs: [r for r in recs if r.get("id") != _del_id_cap]
-                            _new_sha = push_cache(gh_config, _delete_mutator_tbl, _commit_msg)
-                            if _new_sha:
+                            _result = push_cache(gh_config, _delete_mutator_tbl, _commit_msg)
+                            if _result is not None:
+                                _new_sha, _new_records = _result
                                 st.success("✅ Record deleted.")
-                                for k in ("sa_cache_data",):
-                                    if k in st.session_state:
-                                        del st.session_state[k]
-                                st.session_state.sa_chain_cache = None
+                                st.session_state.sa_cache_data     = _new_records
+                                st.session_state.sa_chain_cache    = None
                                 st.session_state.sa_analytics_view = None
                                 st.session_state.sa_pending_delete = None
                                 st.session_state.sa_pending_delete_confirmed = False
-                                st.rerun()
+                                st.rerun(scope="app")
                     with _no_col:
                         if st.button("Cancel", key="sa_del_cancel2_tbl"):
                             st.session_state.sa_pending_delete = None
                             st.session_state.sa_pending_delete_confirmed = False
-                            st.rerun()
+                            st.rerun(scope="app")
 
         # ── Per-row audit report downloads ────────────────────────────
         st.divider()
@@ -3279,14 +3301,14 @@ with tab_analytics:
                         _upd, _ = rescan_conflicts(_recs)
                         return _upd
                     _commit_msg = f"Rescan: tag {_n_upd} record(s) with missing conflict flags"
-                    _new_sha = push_cache(gh_config, _rescan_mutator, _commit_msg)
-                    if _new_sha:
-                        if "sa_cache_data" in st.session_state:
-                            del st.session_state["sa_cache_data"]
-                        st.session_state.sa_chain_cache = None
+                    _result = push_cache(gh_config, _rescan_mutator, _commit_msg)
+                    if _result is not None:
+                        _new_sha, _new_records = _result
+                        st.session_state.sa_cache_data     = _new_records
+                        st.session_state.sa_chain_cache    = None
                         st.session_state.sa_analytics_view = None
                         st.success(f"✅ Updated {_n_upd} record(s). Reloading…")
-                        st.rerun()
+                        st.rerun(scope="app")
         with _rs_col3:
             st.markdown("<div style='padding-top:8px'></div>", unsafe_allow_html=True)
             if st.button("📋 Normalize Patrol numbers", key="sa_normalize_patrol_btn"):
@@ -3312,14 +3334,14 @@ with tab_analytics:
                         f"Normalize patrol_number: {_n_changes} record(s) "
                         f"updated (strip 'Patrol' prefix)"
                     )
-                    _new_sha = push_cache(gh_config, _normalize_patrol_mutator, _commit_msg)
-                    if _new_sha:
-                        if "sa_cache_data" in st.session_state:
-                            del st.session_state["sa_cache_data"]
-                        st.session_state.sa_chain_cache = None
+                    _result = push_cache(gh_config, _normalize_patrol_mutator, _commit_msg)
+                    if _result is not None:
+                        _new_sha, _new_records = _result
+                        st.session_state.sa_cache_data     = _new_records
+                        st.session_state.sa_chain_cache    = None
                         st.session_state.sa_analytics_view = None
                         st.success(f"✅ Normalized {_n_changes} record(s). Reloading…")
-                        st.rerun()
+                        st.rerun(scope="app")
 
         # Precompute per-record covered minute sets once for the Shared column.
         # Only same-unit pairs can share minutes; bucket first, then intersect.
@@ -3638,7 +3660,8 @@ with tab_analytics:
 # ───────────────────────────────────────────────────────────────────
 # TAB 3: AUDITOR GUIDE
 # ───────────────────────────────────────────────────────────────────
-with tab_guide:
+@st.fragment
+def render_guide_tab():
     st.subheader("Auditor Guide")
     gh_config_guide = get_github_config()
     if gh_config_guide is None:
@@ -3681,3 +3704,16 @@ with tab_guide:
             )
         else:
             st.markdown(_guide_content)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Render — each fragment populates its tab. Widget interactions
+# inside a fragment trigger fragment-only reruns (the speedup);
+# tab-switch clicks are outside fragments and trigger app reruns.
+# ═══════════════════════════════════════════════════════════════════
+with tab_entry:
+    render_entry_tab()
+with tab_analytics:
+    render_analytics_tab()
+with tab_guide:
+    render_guide_tab()

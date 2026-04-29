@@ -84,6 +84,8 @@ Non-widget session_state (safe to write anywhere):
 
 `push_cache(config, mutator, commit_message)` reads the current cache, applies `mutator(list[record]) -> list[record]`, and PUTs. On `409` (concurrent write), it re-reads and re-applies the mutator before retrying.
 
+**Returns `(new_sha, post_mutator_records)` on success, `None` on failure.** Callers MUST update their in-memory `sa_cache_data` with `post_mutator_records` rather than `del`-ing it and re-fetching from GitHub — that's the "no follow-up GET on save" optimization. The Refresh Cache button is the *only* legitimate site that still `del`s `sa_cache_data` (its purpose is to force a fresh GitHub fetch).
+
 **Always supply a mutator** — never a pre-built records list with a pre-fetched SHA. A pre-built list corrupts:
 
 - **Edits:** re-append on 409 after re-read → duplicate record.
@@ -96,9 +98,45 @@ Current mutators:
 - Delete: inline `lambda recs: [r for r in recs if r.get("id") != del_id]`.
 - Benchmark overrides use a separate `save_benchmarks()` (single-object PUT, no mutator needed).
 
+Current `push_cache` callers (4): `_do_save_push` (Entry tab saves), the Submissions Table delete flow, the Conflicts & Flags rescan flow, the Normalize Patrol flow. All four unpack `(new_sha, new_records)` and set `sa_cache_data = new_records` alongside the paired `sa_chain_cache = sa_analytics_view = None` invalidations.
+
 `save_benchmarks(config, data, sha)` mirrors `push_cache`'s retry shape — a single PUT, with a one-shot 409 re-read+retry via the side-effect-free `_get_benchmarks_sha()` helper (raw GET, returns SHA only, no `st.error`). No mutator: this is a single-object PUT and last-writer-wins is the documented semantic. The retry helper returns `None` on any error (404/network/parse), which the caller treats as "file absent, attempt create" — acceptable trade-off for a config file. The Save Overrides button must call `st.toast(...)` + `st.rerun()` on success (not `st.success(...)`, which is wiped by the rerun before it renders).
 
 Conflict-flow save buttons must only clear `sa_conflict_state` and `st.rerun()` when `new_sha is not None`. On failure, `push_cache` has already rendered `st.error(...)`; leaving the conflict UI up lets the auditor retry without re-entering the form.
+
+## Tab fragment architecture
+
+`st.tabs()` is a layout container, not a router — without intervention, every tab body executes on every Streamlit rerun. With hundreds of cached records, a click on Add Circuit (Entry tab) silently re-runs the entire Analytics tab body, including its benchmarks expander rendering N `number_input` widgets. Fragments confine this.
+
+**Structure:**
+
+```python
+# Module scope (runs every outer rerun, before tabs):
+gh_config = get_github_config()           # hoisted — single source of truth
+if gh_config is None: st.warning(...); st.stop()
+if "sa_cache_data" not in st.session_state: load_cache(...)         # one-shot
+if not sa_benchmarks_loaded:               load_benchmarks(...)      # one-shot
+tab_entry, tab_analytics, tab_guide = st.tabs([...])
+
+@st.fragment
+def render_entry_tab():    ...
+@st.fragment
+def render_analytics_tab(): ...
+@st.fragment
+def render_guide_tab():    ...
+
+with tab_entry:    render_entry_tab()
+with tab_analytics: render_analytics_tab()
+with tab_guide:    render_guide_tab()
+```
+
+**Rules of the road:**
+
+1. **`st.rerun()` inside a fragment is `st.rerun(scope="app")` everywhere** in this file. Streamlit's default scope from inside a fragment is `"app"` in 1.52.x, but make it explicit — future-proofs against a default-change and is the conservative choice for cross-tab state propagation. The speedup comes from automatic widget reruns at sites *without* explicit `st.rerun()` (Add Circuit / Remove Circuit / New Form / clean-save path), which stay fragment-local.
+2. **Never use `st.stop()` inside a fragment** — it halts the whole app, not just the fragment. Use `return` instead. Currently one site: the Analytics empty-cache early-out (`if not records: st.info(...); return`). The module-scope `st.stop()` (gh_config check) is correct because it should halt the whole app.
+3. **Cache loaders MUST live at module scope.** If they were inside Analytics fragment, Entry users on first load would have no `sa_cache_data` (Entry's conflict check at line ~2161 reads `gh_config` and does its own `load_cache` for fresh data, but other Entry paths assume `sa_cache_data` exists in session). Hoisting guarantees both fragments see the cache from the first render.
+4. **Cross-fragment hand-off (Edit flow):** the Analytics-tab "✏️ Edit" button's `on_click=_do_load_edit_from_selection` callback writes widget-bound `sa_patrol`/`sa_unit`/etc. + `sa_editing_record_id`. The Analytics fragment then reruns, showing the "switch to Entry tab" toast. The user clicking the Entry tab is a tab-control widget click — that widget lives at module scope (outside both fragments) → triggers an **app-scope rerun** → Entry fragment re-renders with hydrated widget keys. This is the only cross-fragment state hand-off; it works because tab-clicks are outside any fragment.
+5. **Refresh Cache** clears `sa_cache_data` + `sa_benchmarks_loaded` + paired caches, then `st.rerun(scope="app")`. The `scope="app"` is essential here — it forces the hoisted module-scope loaders to re-execute.
 
 ## Session-state lifecycle snippets
 
