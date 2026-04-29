@@ -54,7 +54,9 @@ Every key below is widget-bound. **Writes to these keys must happen either (a) i
 
 Non-widget session_state (safe to write anywhere):
 
-- `sa_circuits`, `sa_circuit_counter`, `sa_prev_time_mode`, `sa_calc_results`, `sa_conflict_state`, `sa_chain_cache`, `sa_cache_data`, `sa_benchmarks`, `sa_benchmarks_sha`, `sa_benchmarks_loaded`, `sa_pending_delete`, `sa_pending_delete_confirmed`, `sa_editing_record_id`, `sa_just_loaded`, `sa_guide_content`, `sa_dup_replace_armed_target`.
+- `sa_circuits`, `sa_circuit_counter`, `sa_prev_time_mode`, `sa_calc_results`, `sa_conflict_state`, `sa_chain_cache`, `sa_analytics_view`, `sa_cache_data`, `sa_benchmarks`, `sa_benchmarks_sha`, `sa_benchmarks_loaded`, `sa_pending_delete`, `sa_pending_delete_confirmed`, `sa_editing_record_id`, `sa_just_loaded`, `sa_guide_content`, `sa_dup_replace_armed_target`.
+
+> **`sa_analytics_view` is a paired-lifecycle cache with `sa_chain_cache`.** Both are keyed by `_get_chain_cache_key(records)` and must be invalidated together. If you set one to `None`, set the other too — clearing only one will leave a stale view that no longer matches the chain data and produces silent inconsistencies in the Analytics tab. Existing pair sites: top-of-script init, `_do_save_push`, Refresh Cache button, delete flow, rescan-conflicts, normalize-patrol.
 
 ## Button inventory
 
@@ -93,6 +95,8 @@ Current mutators:
 - Save (conflict-flagged): same mutator with `pending["conflict_status"]` pre-set.
 - Delete: inline `lambda recs: [r for r in recs if r.get("id") != del_id]`.
 - Benchmark overrides use a separate `save_benchmarks()` (single-object PUT, no mutator needed).
+
+`save_benchmarks(config, data, sha)` mirrors `push_cache`'s retry shape — a single PUT, with a one-shot 409 re-read+retry via the side-effect-free `_get_benchmarks_sha()` helper (raw GET, returns SHA only, no `st.error`). No mutator: this is a single-object PUT and last-writer-wins is the documented semantic. The retry helper returns `None` on any error (404/network/parse), which the caller treats as "file absent, attempt create" — acceptable trade-off for a config file. The Save Overrides button must call `st.toast(...)` + `st.rerun()` on success (not `st.success(...)`, which is wiped by the rerun before it renders).
 
 Conflict-flow save buttons must only clear `sa_conflict_state` and `st.rerun()` when `new_sha is not None`. On failure, `push_cache` has already rendered `st.error(...)`; leaving the conflict UI up lets the auditor retry without re-entering the form.
 

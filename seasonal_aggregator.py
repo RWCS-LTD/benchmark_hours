@@ -164,8 +164,43 @@ def load_benchmarks(config) -> tuple:
         return {}, None
 
 
+def _get_benchmarks_sha(config) -> str | None:
+    """Raw GET — return current benchmarks file SHA or None.
+
+    No Streamlit side effects (unlike load_benchmarks, which calls st.error).
+    Returns None on any error (404, network, parse) — caller treats None as
+    'file absent, attempt create.' Acceptable trade-off for a single-object
+    PUT: the retry will recreate cleanly if the file genuinely doesn't
+    exist, and last-writer-wins is the documented semantic for benchmarks.
+    """
+    if config is None:
+        return None
+    headers = {
+        "Authorization": f"token {config['token']}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    url = (
+        f"https://api.github.com/repos/{config['data_repo']}"
+        f"/contents/{BENCHMARKS_PATH}?ref={config['branch']}"
+    )
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return resp.json().get("sha")
+    except requests.exceptions.RequestException:
+        return None
+
+
 def save_benchmarks(config, data: dict, sha) -> str | None:
-    """Write benchmarks dict to GitHub. Returns new SHA or None on failure."""
+    """Write benchmarks dict to GitHub with one-shot 409 retry.
+
+    Mirrors push_cache's retry shape but for a single-object PUT (no mutator
+    — last writer wins). On 409 SHA mismatch, re-fetches the current SHA via
+    _get_benchmarks_sha and retries once. Returns new SHA on success, None
+    on failure.
+    """
     if config is None:
         return None
     headers = {
@@ -179,15 +214,24 @@ def save_benchmarks(config, data: dict, sha) -> str | None:
     content_b64 = base64.b64encode(
         json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False).encode()
     ).decode("ascii")
-    payload = {
-        "message": "Update route benchmarks",
-        "content": content_b64,
-        "branch": config["branch"],
-    }
-    if sha:
-        payload["sha"] = sha
+
+    def _put(file_sha):
+        payload = {
+            "message": "Update route benchmarks",
+            "content": content_b64,
+            "branch":  config["branch"],
+        }
+        if file_sha:
+            payload["sha"] = file_sha
+        return requests.put(url, headers=headers, json=payload, timeout=15)
+
     try:
-        resp = requests.put(url, headers=headers, json=payload, timeout=15)
+        resp = _put(sha)
+        if resp.status_code == 409:
+            # SHA mismatch — re-read SHA only (no Streamlit side effects)
+            # and retry once. None on the retry = file was deleted; PUT
+            # without sha is a valid recreate.
+            resp = _put(_get_benchmarks_sha(config))
         resp.raise_for_status()
         return resp.json()["content"]["sha"]
     except requests.exceptions.RequestException as e:
@@ -969,6 +1013,56 @@ def _build_event_chains(records_for_unit: list) -> list:
     return chains
 
 
+def _build_analytics_view(records: list) -> dict:
+    """Deterministic Analytics-tab derivations from the records list.
+
+    Returns the records DataFrame + filter dropdown options + date-range
+    bounds + the cross-record route set used by the benchmarks expander.
+    Paired with the sa_analytics_view session-state cache, keyed by
+    _get_chain_cache_key(records) — see sa_chain_cache for the same
+    pattern. The two caches are ALWAYS invalidated together.
+
+    Empty-cache safety: returns date.today() for min/max when records is
+    empty (intentional improvement; the prior inline code at the call
+    site already had this guard, but moving it into the helper documents
+    the contract).
+    """
+    rows = []
+    for r in records:
+        routes_str = ", ".join(r.get("routes_used", [])) or "—"
+        hours = r.get("total_operating_minutes", 0) / 60
+        _rid = r.get("id", "")
+        rows.append({
+            "ID":           (_rid[:8] + "…") if _rid else "",
+            "Date":         r.get("start_date", ""),
+            "Patrol":       r.get("patrol_number", ""),
+            "Unit":         r.get("unit_number", ""),
+            "Unit Type":    r.get("unit_type", ""),
+            "Routes":       routes_str,
+            "Total Hours":  round(hours, 2),
+            "Tow Plow":     "Yes" if r.get("tow_plow_used") else "No",
+            "Overnight":    "Yes" if r.get("has_overnight") else "No",
+            "Spare":        "Yes" if r.get("is_spare") else "No",
+            "Out of Season":"⚠️" if r.get("out_of_season") else "",
+            "Flags":        r.get("conflict_status", "clean"),
+            "Anomalies":    "; ".join(r.get("anomalies", [])) or "",
+            "_id":          _rid,
+        })
+    df = pd.DataFrame(rows)
+    dates = pd.to_datetime(df["Date"]) if not df.empty else None
+    return {
+        "df":               df,
+        "patrol_opts":      ["All"] + sorted(df["Patrol"].unique().tolist()),
+        "unit_opts":        ["All"] + sorted(df["Unit"].unique().tolist()),
+        "all_routes":       sorted({r for rr in df["Routes"]
+                                    for r in rr.split(", ") if r and r != "—"}),
+        "min_date":         dates.min().date() if dates is not None else date.today(),
+        "max_date":         dates.max().date() if dates is not None else date.today(),
+        "all_cache_routes": sorted({c.get("route", "") for r in records
+                                    for c in r.get("circuits", []) if c.get("route")}),
+    }
+
+
 def _combined_circuit_seq(chain: list) -> list:
     """Build a single sorted circuit sequence from all records in a chain."""
     seq = []
@@ -1356,6 +1450,8 @@ if "sa_benchmarks_loaded" not in st.session_state:
     st.session_state.sa_benchmarks_loaded = False
 if "sa_chain_cache" not in st.session_state:
     st.session_state.sa_chain_cache = None
+if "sa_analytics_view" not in st.session_state:
+    st.session_state.sa_analytics_view = None
 if "sa_pending_delete" not in st.session_state:
     st.session_state.sa_pending_delete = None
 if "sa_pending_delete_confirmed" not in st.session_state:
@@ -1927,6 +2023,7 @@ with tab_entry:
                     if "sa_cache_data" in st.session_state:
                         del st.session_state["sa_cache_data"]
                     st.session_state.sa_chain_cache = None
+                    st.session_state.sa_analytics_view = None
                     if edit_id:
                         st.session_state.sa_editing_record_id = None
                 return new_sha
@@ -2485,6 +2582,7 @@ with tab_analytics:
         st.session_state.sa_benchmarks = {}
         st.session_state.sa_benchmarks_sha = None
         st.session_state.sa_chain_cache = None
+        st.session_state.sa_analytics_view = None
         st.rerun()
 
     if "sa_cache_data" not in st.session_state:
@@ -2520,47 +2618,35 @@ with tab_analytics:
         }
     all_chains = st.session_state.sa_chain_cache["chains"]
 
-    # Build flat DataFrame
-    rows = []
-    for r in records:
-        routes_str = ", ".join(r.get("routes_used", [])) or "—"
-        hours = r.get("total_operating_minutes", 0) / 60
-        _rid = r.get("id", "")
-        rows.append({
-            "ID":           (_rid[:8] + "…") if _rid else "",
-            "Date":         r.get("start_date", ""),
-            "Patrol":       r.get("patrol_number", ""),
-            "Unit":         r.get("unit_number", ""),
-            "Unit Type":    r.get("unit_type", ""),
-            "Routes":       routes_str,
-            "Total Hours":  round(hours, 2),
-            "Tow Plow":     "Yes" if r.get("tow_plow_used") else "No",
-            "Overnight":    "Yes" if r.get("has_overnight") else "No",
-            "Spare":        "Yes" if r.get("is_spare") else "No",
-            "Out of Season":"⚠️" if r.get("out_of_season") else "",
-            "Flags":        r.get("conflict_status", "clean"),
-            "Anomalies":    "; ".join(r.get("anomalies", [])) or "",
-            "_id":          _rid,
-        })
-    df = pd.DataFrame(rows)
+    # ── Analytics View Cache ──────────────────────────────────────────
+    # Records → DataFrame + filter dropdown options + date bounds. Keyed
+    # by the same SHA as sa_chain_cache and ALWAYS invalidated together.
+    _av = st.session_state.get("sa_analytics_view")
+    if _av is None or _av.get("key") != _ck:
+        st.session_state.sa_analytics_view = {
+            "key":  _ck,
+            "view": _build_analytics_view(records),
+        }
+    _view            = st.session_state.sa_analytics_view["view"]
+    df               = _view["df"]
+    patrol_opts      = _view["patrol_opts"]
+    unit_opts        = _view["unit_opts"]
+    all_routes       = _view["all_routes"]
+    route_opts       = ["All"] + all_routes
+    min_date         = _view["min_date"]
+    max_date         = _view["max_date"]
+    all_cache_routes = _view["all_cache_routes"]
 
     # ── Filters ───────────────────────────────────────────────────────
     st.markdown("**Filters**")
     f1, f2, f3, f4, f5 = st.columns(5)
     with f1:
-        patrol_opts = ["All"] + sorted(df["Patrol"].unique().tolist())
         f_patrol = st.selectbox("Patrol #", patrol_opts, key="sa_f_patrol")
     with f2:
-        unit_opts = ["All"] + sorted(df["Unit"].unique().tolist())
         f_unit = st.selectbox("Unit #", unit_opts, key="sa_f_unit")
     with f3:
-        # Flatten routes across all entries
-        all_routes = sorted({r for rr in df["Routes"] for r in rr.split(", ") if r and r != "—"})
-        route_opts = ["All"] + all_routes
         f_route = st.selectbox("Route #", route_opts, key="sa_f_route")
     with f4:
-        min_date = pd.to_datetime(df["Date"]).min().date() if not df.empty else date.today()
-        max_date = pd.to_datetime(df["Date"]).max().date() if not df.empty else date.today()
         f_date_from = st.date_input("From", value=min_date, key="sa_f_from")
     with f5:
         f_date_to = st.date_input("To", value=max_date, key="sa_f_to")
@@ -2573,10 +2659,8 @@ with tab_analytics:
         fdf = fdf[fdf["Unit"] == f_unit]
     if f_route != "All":
         fdf = fdf[fdf["Routes"].str.contains(f_route, na=False)]
-    fdf = fdf[
-        (pd.to_datetime(fdf["Date"]).dt.date >= f_date_from) &
-        (pd.to_datetime(fdf["Date"]).dt.date <= f_date_to)
-    ]
+    _fdates = pd.to_datetime(fdf["Date"]).dt.date
+    fdf = fdf[(_fdates >= f_date_from) & (_fdates <= f_date_to)]
 
     st.caption(f"Showing {len(fdf)} of {len(df)} entries")
     st.divider()
@@ -2590,14 +2674,8 @@ with tab_analytics:
             "Override a value only if it was amended — overrides are saved to GitHub."
         )
 
-        # Collect all unique routes across ALL cache records (not filtered)
-        all_cache_routes = sorted({
-            c.get("route", "")
-            for r in records
-            for c in r.get("circuits", [])
-            if c.get("route")
-        })
-
+        # all_cache_routes is sourced from the analytics view cache above —
+        # do not re-derive here.
         bm_edits = {}
         if all_cache_routes:
             bm_cols = st.columns([1, 1])
@@ -2642,7 +2720,8 @@ with tab_analytics:
             if new_sha:
                 st.session_state.sa_benchmarks = overrides_only
                 st.session_state.sa_benchmarks_sha = new_sha
-                st.success(f"✅ {len(overrides_only)} override(s) saved to GitHub.")
+                st.toast(f"{len(overrides_only)} override(s) saved to GitHub.", icon="✅")
+                st.rerun()
 
     st.divider()
 
@@ -2869,6 +2948,7 @@ with tab_analytics:
                                     if k in st.session_state:
                                         del st.session_state[k]
                                 st.session_state.sa_chain_cache = None
+                                st.session_state.sa_analytics_view = None
                                 st.session_state.sa_pending_delete = None
                                 st.session_state.sa_pending_delete_confirmed = False
                                 st.rerun()
@@ -3204,6 +3284,7 @@ with tab_analytics:
                         if "sa_cache_data" in st.session_state:
                             del st.session_state["sa_cache_data"]
                         st.session_state.sa_chain_cache = None
+                        st.session_state.sa_analytics_view = None
                         st.success(f"✅ Updated {_n_upd} record(s). Reloading…")
                         st.rerun()
         with _rs_col3:
@@ -3236,6 +3317,7 @@ with tab_analytics:
                         if "sa_cache_data" in st.session_state:
                             del st.session_state["sa_cache_data"]
                         st.session_state.sa_chain_cache = None
+                        st.session_state.sa_analytics_view = None
                         st.success(f"✅ Normalized {_n_changes} record(s). Reloading…")
                         st.rerun()
 
