@@ -1680,9 +1680,11 @@ def render_entry_tab():
             with col_tp:
                 c["tow_plow"] = st.checkbox("Tow Plow", c.get("tow_plow", False), key=f"sa_tp_{cid}")
             with col_del:
-                if st.button("🗑", key=f"sa_rm_{cid}", disabled=len(st.session_state.sa_circuits) == 1):
-                    sa_remove_circuit(i)
-                    st.rerun(scope="app")
+                st.button(
+                    "🗑", key=f"sa_rm_{cid}",
+                    disabled=len(st.session_state.sa_circuits) == 1,
+                    on_click=sa_remove_circuit, args=(i,),
+                )
 
         elif sa_mode == "HHMM (e.g. 0930)":
             if f"sa_st_{cid}" not in st.session_state:
@@ -1723,9 +1725,11 @@ def render_entry_tab():
             with col_tp:
                 c["tow_plow"] = st.checkbox("Tow Plow", c.get("tow_plow", False), key=f"sa_tp_{cid}")
             with col_del:
-                if st.button("🗑", key=f"sa_rm_{cid}", disabled=len(st.session_state.sa_circuits) == 1):
-                    sa_remove_circuit(i)
-                    st.rerun(scope="app")
+                st.button(
+                    "🗑", key=f"sa_rm_{cid}",
+                    disabled=len(st.session_state.sa_circuits) == 1,
+                    on_click=sa_remove_circuit, args=(i,),
+                )
 
         else:
             # HH:MM mode — single box, type 4 digits, auto-formats to HH:MM on tab-away
@@ -1771,13 +1775,15 @@ def render_entry_tab():
             with col_tp:
                 c["tow_plow"] = st.checkbox("Tow Plow", c.get("tow_plow", False), key=f"sa_tp_{cid}")
             with col_del:
-                if st.button("🗑", key=f"sa_rm_{cid}", disabled=len(st.session_state.sa_circuits) == 1):
-                    sa_remove_circuit(i)
-                    st.rerun(scope="app")
+                st.button(
+                    "🗑", key=f"sa_rm_{cid}",
+                    disabled=len(st.session_state.sa_circuits) == 1,
+                    on_click=sa_remove_circuit, args=(i,),
+                )
 
-    if st.button("➕ Add Circuit"):
-        sa_add_circuit()
-        st.rerun(scope="app")
+    # on_click callback → automatic fragment-only rerun (no explicit
+    # st.rerun = no app-scope rerun = Analytics tab body NOT re-executed).
+    st.button("➕ Add Circuit", on_click=sa_add_circuit)
 
     # ── End-of-event allowance ────────────────────────────────────────
     st.divider()
