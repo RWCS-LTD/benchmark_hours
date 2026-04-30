@@ -104,6 +104,14 @@ Current `push_cache` callers (4): `_do_save_push` (Entry tab saves), the Submiss
 
 Conflict-flow save buttons must only clear `sa_conflict_state` and `st.rerun()` when `new_sha is not None`. On failure, `push_cache` has already rendered `st.error(...)`; leaving the conflict UI up lets the auditor retry without re-entering the form.
 
+**Cache storage format (post-2026-04-30 fix).** Cache is stored as `gzip(JSON)` in `data/season_cache.json` (base64 is only the wire format the Contents API requires; bh-data holds the gzip bytes). Reads transparently handle both raw-JSON and gzip-JSON via `_decompress_if_gzipped` (magic-byte sniff) — old files load fine until the next save rewrites them in gzipped form. Read path also falls back to `download_url` (then `/git/blobs/{sha}`) if the Contents API GET returns `encoding:"none"` (file >1 MB). `gzip.compress` is called with `mtime=0` so identical record sets always produce the same SHA — required for 409 conflict detection to remain reliable. On any decode/parse/network failure, `load_cache` and `load_benchmarks` fail loud via `st.error` + `st.stop` — never silent `[]` or `{}`, which would let the next `push_cache` / `save_benchmarks` wipe the file. The guide loader uses `st.warning` (not `st.stop`) — guide is non-critical.
+
+**`load_benchmarks` 404 is non-fatal.** A missing `data/benchmarks.json` is a valid first-run state and returns `({}, None)` quietly. Only unexpected errors (parse, decode, network) trigger `st.stop`.
+
+**`_get_benchmarks_sha` is intentionally NOT hardened for >1 MB files.** It only reads `meta["sha"]`, never `meta["content"]`, so the Contents API's 1 MB inline-body cap is irrelevant. Do not "fix" it.
+
+**Benchmarks are NOT gzipped.** `data/benchmarks.json` is small, sometimes human-edited via PR, and stays as raw indented JSON for sanity-check transparency.
+
 ## Tab fragment architecture
 
 `st.tabs()` is a layout container, not a router — without intervention, every tab body executes on every Streamlit rerun. With hundreds of cached records, a click on Add Circuit (Entry tab) silently re-runs the entire Analytics tab body, including its benchmarks expander rendering N `number_input` widgets. Fragments confine this.

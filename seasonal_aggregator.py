@@ -12,6 +12,8 @@ import streamlit as st
 import pandas as pd
 import json
 import base64
+import binascii
+import gzip
 import uuid
 import hashlib
 import requests
@@ -33,6 +35,19 @@ TOWING_TYPES = {"Combination Unit - Wide Wing", "Tow Plow"}
 SEASON_START    = (10, 15)   # Oct 15
 SEASON_END      = (4, 30)    # Apr 30
 BENCHMARKS_PATH = "data/benchmarks.json"
+
+# Magic bytes for transparent gzip detection on read.
+# Cache (data/season_cache.json) is stored as gzip(JSON) post-2026-04-30 fix.
+# Benchmarks stay raw JSON. Old raw-JSON cache files keep loading via the
+# magic-byte check until the next save rewrites them.
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+def _decompress_if_gzipped(data: bytes) -> bytes:
+    """Transparently gunzip if magic bytes match, else passthrough."""
+    if data[:2] == _GZIP_MAGIC:
+        return gzip.decompress(data)
+    return data
 
 # Valid patrol numbers — constrains the Patrol # dropdown and controls the
 # batch-migration target. Add a new number here when a new patrol is deployed.
@@ -108,6 +123,14 @@ def load_cache(config) -> tuple:
     """
     Returns (records: list, sha: str|None).
     Returns ([], None) if file doesn't exist yet or config is None.
+
+    Above 1 MB the Contents API returns encoding="none" + empty content;
+    we follow download_url (preferred — single round-trip, raw bytes) or
+    fall back to /git/blobs/{sha} (Git Data API, supports up to 100 MB).
+    Cache bytes may be raw JSON or gzip(JSON); _decompress_if_gzipped
+    handles both transparently. On any decode/parse/network failure we
+    fail loud (st.error + st.stop) — never silent [], which would let
+    push_cache wipe the file.
     """
     if config is None:
         return [], None
@@ -124,19 +147,58 @@ def load_cache(config) -> tuple:
         if resp.status_code == 404:
             return [], None
         resp.raise_for_status()
-        data = resp.json()
-        content = base64.b64decode(data["content"]).decode("utf-8")
-        return json.loads(content), data["sha"]
-    except requests.exceptions.RequestException as e:
-        st.error(f"GitHub read error: {e}")
-        return [], None
+        meta = resp.json()
+        sha = meta["sha"]
+        content_b64 = meta.get("content") or ""
+        encoding = meta.get("encoding")
+
+        if encoding == "none" or not content_b64:
+            # File >1 MB — Contents API does not inline the body.
+            # download_url is already pre-authenticated (private repo);
+            # passing the Authorization header is harmless.
+            dl = meta.get("download_url")
+            if dl:
+                raw = requests.get(dl, headers=headers, timeout=20)
+                raw.raise_for_status()
+                blob_bytes = raw.content
+            else:
+                blob_url = (
+                    f"https://api.github.com/repos/{config['data_repo']}"
+                    f"/git/blobs/{sha}"
+                )
+                blob = requests.get(blob_url, headers=headers, timeout=20)
+                blob.raise_for_status()
+                blob_bytes = base64.b64decode(blob.json()["content"])
+        else:
+            blob_bytes = base64.b64decode(content_b64)
+
+        text = _decompress_if_gzipped(blob_bytes).decode("utf-8")
+        return json.loads(text), sha
+    except (
+        requests.exceptions.RequestException,
+        KeyError,
+        binascii.Error,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+        OSError,  # gzip.BadGzipFile is OSError; covers older Pythons too.
+    ) as e:
+        st.error(
+            f"Critical: failed to load audit cache. "
+            f"Halting to prevent silent data loss. Error: {e}"
+        )
+        st.stop()
 
 
 def load_benchmarks(config) -> tuple:
     """
     Returns (data: dict, sha: str|None).
     Keys are route IDs, values are benchmark hours (float).
-    Returns ({}, None) if file doesn't exist yet.
+
+    A missing data/benchmarks.json (404) is a legitimate first-run
+    state and returns ({}, None) quietly. Other errors (parse, decode,
+    network) fail loud — silent {} would let save_benchmarks wipe a
+    healthy file on a transient blip. Matches load_cache's >1 MB
+    fallback shape so benchmarks can grow safely later if needed.
     """
     if config is None:
         return {}, None
@@ -151,17 +213,52 @@ def load_benchmarks(config) -> tuple:
     try:
         resp = requests.get(url, headers=headers, timeout=10)
         if resp.status_code == 404:
-            return {}, None
+            return {}, None  # legitimate first-run state, NOT a hard failure
         resp.raise_for_status()
-        data = resp.json()
-        content = base64.b64decode(data["content"]).decode("utf-8")
-        parsed = json.loads(content)
+        meta = resp.json()
+        sha = meta["sha"]
+        content_b64 = meta.get("content") or ""
+        encoding = meta.get("encoding")
+
+        if encoding == "none" or not content_b64:
+            dl = meta.get("download_url")
+            if dl:
+                raw = requests.get(dl, headers=headers, timeout=20)
+                raw.raise_for_status()
+                blob_bytes = raw.content
+            else:
+                blob_url = (
+                    f"https://api.github.com/repos/{config['data_repo']}"
+                    f"/git/blobs/{sha}"
+                )
+                blob = requests.get(blob_url, headers=headers, timeout=20)
+                blob.raise_for_status()
+                blob_bytes = base64.b64decode(blob.json()["content"])
+        else:
+            blob_bytes = base64.b64decode(content_b64)
+
+        text = _decompress_if_gzipped(blob_bytes).decode("utf-8")
+        parsed = json.loads(text)
         if not isinstance(parsed, dict):
-            return {}, data["sha"]
-        return parsed, data["sha"]
-    except (requests.exceptions.RequestException, json.JSONDecodeError, Exception) as e:
-        st.error(f"GitHub benchmarks read error: {e}")
-        return {}, None
+            st.error(
+                "Critical: benchmarks file is not a JSON object. "
+                "Halting to prevent silent data loss."
+            )
+            st.stop()
+        return parsed, sha
+    except (
+        requests.exceptions.RequestException,
+        KeyError,
+        binascii.Error,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+        OSError,
+    ) as e:
+        st.error(
+            f"Critical: failed to load benchmarks. "
+            f"Halting to prevent silent data loss. Error: {e}"
+        )
+        st.stop()
 
 
 def _get_benchmarks_sha(config) -> str | None:
@@ -262,9 +359,17 @@ def push_cache(config, mutator, commit_message: str) -> tuple[str, list] | None:
     )
 
     def _put(records_list, file_sha):
-        content_b64 = base64.b64encode(
-            json.dumps(records_list, indent=2, ensure_ascii=False).encode()
-        ).decode("ascii")
+        # Compact JSON (no indent) + gzip + base64 for the Contents API
+        # payload. mtime=0 keeps gzip output byte-deterministic so an
+        # identical record set always produces an identical SHA — required
+        # for 409 conflict detection to remain reliable. The bytes stored
+        # in bh-data are gzip(JSON); the base64 wrap is only the wire
+        # format the Contents API requires.
+        raw_json = json.dumps(
+            records_list, ensure_ascii=False, separators=(",", ":")
+        ).encode()
+        gzipped = gzip.compress(raw_json, compresslevel=6, mtime=0)
+        content_b64 = base64.b64encode(gzipped).decode("ascii")
         payload = {
             "message": commit_message,
             "content": content_b64,
@@ -3694,12 +3799,37 @@ def render_guide_tab():
                         st.session_state.sa_guide_content = None
                     else:
                         _g_resp.raise_for_status()
-                        _g_data = _g_resp.json()
+                        _g_meta = _g_resp.json()
+                        _g_b64 = _g_meta.get("content") or ""
+                        if _g_meta.get("encoding") == "none" or not _g_b64:
+                            _g_dl = _g_meta.get("download_url")
+                            if _g_dl:
+                                _g_raw = requests.get(_g_dl, headers=_g_headers, timeout=20)
+                                _g_raw.raise_for_status()
+                                _g_bytes = _g_raw.content
+                            else:
+                                _g_blob_url = (
+                                    f"https://api.github.com/repos/{_gh['repo']}"
+                                    f"/git/blobs/{_g_meta['sha']}"
+                                )
+                                _g_blob = requests.get(_g_blob_url, headers=_g_headers, timeout=20)
+                                _g_blob.raise_for_status()
+                                _g_bytes = base64.b64decode(_g_blob.json()["content"])
+                        else:
+                            _g_bytes = base64.b64decode(_g_b64)
                         st.session_state.sa_guide_content = (
-                            base64.b64decode(_g_data["content"]).decode("utf-8")
+                            _decompress_if_gzipped(_g_bytes).decode("utf-8")
                         )
-                except Exception as _g_e:
-                    st.error(f"Could not load guide: {_g_e}")
+                except (
+                    requests.exceptions.RequestException,
+                    KeyError,
+                    binascii.Error,
+                    UnicodeDecodeError,
+                    OSError,
+                ) as _g_e:
+                    # Guide is non-critical — warn (don't halt) and let
+                    # the rest of the app render.
+                    st.warning(f"Could not load guide: {_g_e}")
                     st.session_state.sa_guide_content = None
 
         _guide_content = st.session_state.get("sa_guide_content")
