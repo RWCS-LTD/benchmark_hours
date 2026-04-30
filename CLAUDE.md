@@ -49,8 +49,12 @@ Every key below is widget-bound. **Writes to these keys must happen either (a) i
 | `sa_rt_{id}` | `text_input` | Per-circuit row |
 | `sa_tp_{id}` | `checkbox` | Per-circuit row |
 | `sa_del_pw_tbl`, `sa_f_*` (no `sa_f_id`), `sa_dup_replace_pw_{scope}`, `sa_view`, `sa_bm_new_*`, `sa_dl_sort_*`, `sa_tab2_auditor` | various | Analytics tab / duplicate-cascade flow |
+| `sa_dl_f_date` | `date_input` | Per-Form Audit Reports expander (defaults to 2026-01-01) |
+| `sa_dl_f_patrol` | `selectbox` | Per-Form Audit Reports expander (defaults to "All") |
 | `sa_patrol` | `selectbox` (was `text_input` pre-Fix 5) | Event Header — Patrol # dropdown constrained to `PATROL_OPTIONS` + empty placeholder |
 | `bme_{route}` | `number_input` | Manage Route Benchmarks expander |
+
+> **Per-Form download local filters compose with tab-level filters (intersection).** `sa_dl_f_date` and `sa_dl_f_patrol` narrow `fdf` *within* the expander only — they don't replace the tab-level `sa_f_*` widgets. If `sa_dl_f_date` falls outside the tab-level `sa_f_from`/`sa_f_to` range (or the patrol is excluded by `sa_f_patrol`), the expander section will be empty — that's correct, not a bug. The empty-state banner names the tab-level `len(fdf)` count to make the cause visible.
 
 Non-widget session_state (safe to write anywhere):
 

@@ -3097,64 +3097,135 @@ def render_analytics_tab():
             if fdf.empty:
                 st.info("No records to download.")
             else:
+                # Auditor name renders unconditionally so the operator
+                # can always type their name even before picking filters
+                # or if the column-regression guard below fires.
                 _tab2_auditor = st.text_input(
                     "Auditor name (appears on each report)",
                     placeholder="Full name",
                     key="sa_tab2_auditor",
                 )
-                st.caption(
-                    f"{len(fdf)} report(s) available. "
-                    "Report totals reflect all circuits on each individual form."
-                )
-                _srt_c1, _srt_c2 = st.columns([3, 1])
-                with _srt_c1:
-                    _dl_sort_col = st.selectbox(
-                        "Sort by", ["Date", "Unit", "Routes", "Total Hours", "Patrol"],
-                        key="sa_dl_sort_col"
-                    )
-                with _srt_c2:
-                    _dl_sort_asc = (
-                        st.radio("Order", ["↑ Asc", "↓ Desc"], horizontal=True, key="sa_dl_sort_dir")
-                        == "↑ Asc"
-                    )
-                _dl_fdf = fdf.sort_values(_dl_sort_col, ascending=_dl_sort_asc).reset_index(drop=True)
 
-                _hdr1, _hdr2, _hdr3, _hdr4, _hdr5 = st.columns([1.5, 1.5, 2.5, 1.2, 1.5])
-                with _hdr1: st.markdown("**Date**")
-                with _hdr2: st.markdown("**Unit**")
-                with _hdr3: st.markdown("**Routes**")
-                with _hdr4: st.markdown("**Hours**")
-                with _hdr5: st.markdown("**Report**")
-                for _, _row in _dl_fdf.iterrows():
-                    _rec = next((r for r in records if r.get("id") == _row["_id"]), None)
-                    if _rec is None:
-                        continue
-                    _dc1, _dc2, _dc3, _dc4, _dc5 = st.columns([1.5, 1.5, 2.5, 1.2, 1.5])
-                    with _dc1: st.caption(_row["Date"])
-                    with _dc2: st.caption(_row["Unit"])
-                    with _dc3: st.caption(_row["Routes"])
-                    with _dc4: st.caption(f"{_row['Total Hours']} hrs")
-                    with _dc5:
-                        _rr = _record_to_report_result(_rec)
-                        _su = str(_rec.get("unit_number", "unit")).replace(" ", "_")
-                        _sr = "_".join(_rec.get("routes_used", [])) or "route"
-                        st.download_button(
-                            "⬇ Report",
-                            data=build_report_html(
-                                _rr,
-                                date.fromisoformat(_rec["start_date"]),
-                                _rec.get("patrol_number") or "—",
-                                _rec.get("unit_number") or "—",
-                                _rec.get("unit_type") or "—",
-                                _tab2_auditor.strip() or "Auditor",
-                                is_spare=_rec.get("is_spare", False),
-                                primary_unit=_rec.get("primary_unit_number") or "",
-                                continues_to_next_form=_rr.get("continues_to_next_form", False),
-                            ),
-                            file_name=f"audit_{_su}_{_sr}_{_rec['start_date']}.html",
-                            mime="text/html",
-                            key=f"sa_dl_rec_{_rec.get('id', _row.name)}",
+                # Defensive column-name check — fail loud if
+                # _build_analytics_view ever renames these columns out
+                # from under us. Cheap insurance against silent regressions.
+                _missing_cols = [c for c in ("Date", "Patrol") if c not in fdf.columns]
+                if _missing_cols:
+                    st.error(
+                        f"Per-Form download section: expected columns "
+                        f"{_missing_cols} not found in analytics view. "
+                        f"Available: {list(fdf.columns)}."
+                    )
+                else:
+                    # Local filters (this expander only). Composes ON TOP
+                    # of the tab-level filters (sa_f_*) — if the tab range
+                    # excludes the date picked here, this section is
+                    # legitimately empty.
+                    _pf_c1, _pf_c2 = st.columns([1, 1])
+                    with _pf_c1:
+                        _pf_date = st.date_input(
+                            "Date",
+                            value=date(2026, 1, 1),
+                            key="sa_dl_f_date",
                         )
+                    with _pf_c2:
+                        _pf_patrol_opts = ["All"] + PATROL_OPTIONS
+                        _pf_patrol = st.selectbox(
+                            "Patrol #",
+                            _pf_patrol_opts,
+                            index=0,
+                            key="sa_dl_f_patrol",
+                        )
+
+                    # errors="coerce" turns malformed dates into NaT so
+                    # comparison treats them as non-matching (correct: a
+                    # row with an unparseable date can't match a picked
+                    # date). Patrol coerced to str on both sides — defends
+                    # against int-typed columns or stray numeric values.
+                    _pf_dates = pd.to_datetime(fdf["Date"], errors="coerce").dt.date
+                    _pf_mask = _pf_dates == _pf_date
+                    if _pf_patrol != "All":
+                        _pf_mask = _pf_mask & (fdf["Patrol"].astype(str) == str(_pf_patrol))
+                    # Boolean-mask via .loc avoids the full DataFrame copy.
+                    _pf_fdf = fdf.loc[_pf_mask]
+
+                    if _pf_fdf.empty:
+                        st.info(
+                            f"No reports match — date {_pf_date.isoformat()}, "
+                            f"patrol {_pf_patrol}. "
+                            f"(Tab-level filters above also apply: "
+                            f"showing {len(fdf)} of all entries. "
+                            f"Widen the tab date range if expected dates are missing.)"
+                        )
+                    else:
+                        st.caption(
+                            f"{len(_pf_fdf)} report(s) on {_pf_date.isoformat()} "
+                            f"(patrol: {_pf_patrol}). "
+                            "Report totals reflect all circuits on each individual form."
+                        )
+                        # Sort label → DataFrame column key. Single source
+                        # of truth — defends against label/key drift.
+                        _SORT_MAP = {
+                            "Date":        "Date",
+                            "Unit":        "Unit",
+                            "Routes":      "Routes",
+                            "Total Hours": "Total Hours",
+                            "Patrol":      "Patrol",
+                        }
+                        _srt_c1, _srt_c2 = st.columns([3, 1])
+                        with _srt_c1:
+                            _dl_sort_label = st.selectbox(
+                                "Sort by", list(_SORT_MAP.keys()),
+                                key="sa_dl_sort_col",
+                            )
+                        with _srt_c2:
+                            _dl_sort_asc = (
+                                st.radio(
+                                    "Order", ["↑ Asc", "↓ Desc"],
+                                    horizontal=True, key="sa_dl_sort_dir",
+                                ) == "↑ Asc"
+                            )
+                        _dl_fdf = _pf_fdf.sort_values(
+                            _SORT_MAP[_dl_sort_label],
+                            ascending=_dl_sort_asc,
+                        ).reset_index(drop=True)
+
+                        _hdr1, _hdr2, _hdr3, _hdr4, _hdr5 = st.columns([1.5, 1.5, 2.5, 1.2, 1.5])
+                        with _hdr1: st.markdown("**Date**")
+                        with _hdr2: st.markdown("**Unit**")
+                        with _hdr3: st.markdown("**Routes**")
+                        with _hdr4: st.markdown("**Hours**")
+                        with _hdr5: st.markdown("**Report**")
+                        for _, _row in _dl_fdf.iterrows():
+                            _rec = next((r for r in records if r.get("id") == _row["_id"]), None)
+                            if _rec is None:
+                                continue
+                            _dc1, _dc2, _dc3, _dc4, _dc5 = st.columns([1.5, 1.5, 2.5, 1.2, 1.5])
+                            with _dc1: st.caption(_row["Date"])
+                            with _dc2: st.caption(_row["Unit"])
+                            with _dc3: st.caption(_row["Routes"])
+                            with _dc4: st.caption(f"{_row['Total Hours']} hrs")
+                            with _dc5:
+                                _rr = _record_to_report_result(_rec)
+                                _su = str(_rec.get("unit_number", "unit")).replace(" ", "_")
+                                _sr = "_".join(_rec.get("routes_used", [])) or "route"
+                                st.download_button(
+                                    "⬇ Report",
+                                    data=build_report_html(
+                                        _rr,
+                                        date.fromisoformat(_rec["start_date"]),
+                                        _rec.get("patrol_number") or "—",
+                                        _rec.get("unit_number") or "—",
+                                        _rec.get("unit_type") or "—",
+                                        _tab2_auditor.strip() or "Auditor",
+                                        is_spare=_rec.get("is_spare", False),
+                                        primary_unit=_rec.get("primary_unit_number") or "",
+                                        continues_to_next_form=_rr.get("continues_to_next_form", False),
+                                    ),
+                                    file_name=f"audit_{_su}_{_sr}_{_rec['start_date']}.html",
+                                    mime="text/html",
+                                    key=f"sa_dl_rec_{_rec.get('id', _row.name)}",
+                                )
 
 
     elif view == "Hours by Unit":
