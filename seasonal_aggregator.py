@@ -1572,6 +1572,8 @@ if "sa_editing_record_id" not in st.session_state:
     st.session_state.sa_editing_record_id = None
 if "sa_just_loaded" not in st.session_state:
     st.session_state.sa_just_loaded = False
+if "sa_active_tab" not in st.session_state:
+    st.session_state.sa_active_tab = "entry"
 # Destructive Replace cascade — tuple of sorted counterpart ids when armed,
 # None when the arm button hasn't been clicked yet for the current conflict.
 if "sa_dup_replace_armed_target" not in st.session_state:
@@ -1645,7 +1647,18 @@ if not st.session_state.get("sa_benchmarks_loaded", False):
         st.session_state.sa_benchmarks_sha   = bm_sha
         st.session_state.sa_benchmarks_loaded = True
 
-tab_entry, tab_analytics, tab_guide = st.tabs(["📝 Entry & Calculate", "📊 Cache Viewer & Analytics", "📖 Auditor Guide"])
+_TAB_LABELS = {
+    "entry":     "📝 Entry & Calculate",
+    "analytics": "📊 Cache Viewer & Analytics",
+    "guide":     "📖 Auditor Guide",
+}
+st.segmented_control(
+    "View",
+    options=list(_TAB_LABELS.keys()),
+    format_func=lambda k: _TAB_LABELS[k],
+    key="sa_active_tab",
+    label_visibility="collapsed",
+)
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -2879,10 +2892,11 @@ def render_analytics_tab():
         _ids_by_pos = _fdf_r["_id"].tolist()
         _display_df_sel = _fdf_r.drop(columns=["_id"])
 
-        # Toast for completed edit loads — surfaced at the top so operators see
-        # it regardless of where they scrolled.
-        if st.session_state.pop("sa_just_loaded", False):
-            st.success("✅ Record loaded — switch to the **📝 Entry & Calculate** tab to review and edit.")
+        # Edit-load handoff: navigation now jumps to the Entry tab via
+        # sa_active_tab="entry" (set inside _do_load_edit_from_selection).
+        # The Entry fragment's edit-mode banner is the landing-page signal.
+        # Flag is cleared silently — kept as a future hook.
+        st.session_state.pop("sa_just_loaded", False)
 
         st.caption(
             f"Showing {len(_fdf_r)} of {len(df)} records. "
@@ -3023,6 +3037,9 @@ def render_analytics_tab():
                         st.session_state.sa_calc_results      = None
                         st.session_state.sa_conflict_state    = None
                         st.session_state.sa_just_loaded       = True
+                        # Programmatic tab switch — land the user on Entry
+                        # with the form pre-filled. Legal: inside on_click.
+                        st.session_state["sa_active_tab"]     = "entry"
 
                     _act_edit, _act_del = st.columns(2)
                     with _act_edit:
@@ -3914,13 +3931,15 @@ def render_guide_tab():
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Render — each fragment populates its tab. Widget interactions
-# inside a fragment trigger fragment-only reruns (the speedup);
-# tab-switch clicks are outside fragments and trigger app reruns.
+# Render — dispatch on sa_active_tab. Only the active fragment runs
+# per outer rerun. Segmented_control click → app rerun → next branch.
+# Programmatic navigation: write sa_active_tab inside an on_click
+# callback (today only _do_load_edit_from_selection does this).
 # ═══════════════════════════════════════════════════════════════════
-with tab_entry:
+_active = st.session_state.get("sa_active_tab", "entry")
+if _active == "entry":
     render_entry_tab()
-with tab_analytics:
+elif _active == "analytics":
     render_analytics_tab()
-with tab_guide:
+else:  # "guide" or any unexpected value
     render_guide_tab()

@@ -53,6 +53,7 @@ Every key below is widget-bound. **Writes to these keys must happen either (a) i
 | `sa_dl_f_patrol` | `selectbox` | Per-Form Audit Reports expander (defaults to "All") |
 | `sa_patrol` | `selectbox` (was `text_input` pre-Fix 5) | Event Header — Patrol # dropdown constrained to `PATROL_OPTIONS` + empty placeholder |
 | `bme_{route}` | `number_input` | Manage Route Benchmarks expander |
+| `sa_active_tab` | `segmented_control` | Module scope, immediately above fragment dispatch — drives view selection. Programmatic writes only inside `on_click` callbacks (today: `_do_load_edit_from_selection`). |
 
 > **Per-Form download local filters compose with tab-level filters (intersection).** `sa_dl_f_date` and `sa_dl_f_patrol` narrow `fdf` *within* the expander only — they don't replace the tab-level `sa_f_*` widgets. If `sa_dl_f_date` falls outside the tab-level `sa_f_from`/`sa_f_to` range (or the patrol is excluded by `sa_f_patrol`), the expander section will be empty — that's correct, not a bug. The empty-state banner names the tab-level `len(fdf)` count to make the cause visible.
 
@@ -118,17 +119,21 @@ Conflict-flow save buttons must only clear `sa_conflict_state` and `st.rerun()` 
 
 ## Tab fragment architecture
 
-`st.tabs()` is a layout container, not a router — without intervention, every tab body executes on every Streamlit rerun. With hundreds of cached records, a click on Add Circuit (Entry tab) silently re-runs the entire Analytics tab body, including its benchmarks expander rendering N `number_input` widgets. Fragments confine this.
+Streamlit's `st.tabs()` is purely client-side CSS — no API for programmatic tab switching. To support cross-fragment navigation (e.g. row-select Edit landing on the Entry form), this app uses an `st.segmented_control` bound to `sa_active_tab` at module scope, then dispatches to one of the three `@st.fragment` functions via `if/elif`. Only the active fragment runs per outer rerun — strict performance win over `st.tabs()`, where every tab body executed on every rerun.
 
 **Structure:**
 
 ```python
-# Module scope (runs every outer rerun, before tabs):
+# Module scope (runs every outer rerun, before view dispatch):
 gh_config = get_github_config()           # hoisted — single source of truth
 if gh_config is None: st.warning(...); st.stop()
 if "sa_cache_data" not in st.session_state: load_cache(...)         # one-shot
 if not sa_benchmarks_loaded:               load_benchmarks(...)      # one-shot
-tab_entry, tab_analytics, tab_guide = st.tabs([...])
+
+_TAB_LABELS = {"entry": "📝 Entry & Calculate", "analytics": "📊 ...", "guide": "📖 ..."}
+st.segmented_control("View", options=list(_TAB_LABELS.keys()),
+                     format_func=lambda k: _TAB_LABELS[k],
+                     key="sa_active_tab", label_visibility="collapsed")
 
 @st.fragment
 def render_entry_tab():    ...
@@ -137,9 +142,10 @@ def render_analytics_tab(): ...
 @st.fragment
 def render_guide_tab():    ...
 
-with tab_entry:    render_entry_tab()
-with tab_analytics: render_analytics_tab()
-with tab_guide:    render_guide_tab()
+_active = st.session_state.get("sa_active_tab", "entry")
+if _active == "entry":       render_entry_tab()
+elif _active == "analytics": render_analytics_tab()
+else:                        render_guide_tab()
 ```
 
 **Rules of the road:**
@@ -147,8 +153,9 @@ with tab_guide:    render_guide_tab()
 1. **`st.rerun()` inside a fragment is `st.rerun(scope="app")` everywhere** in this file. Streamlit's default scope from inside a fragment is `"app"` in 1.52.x, but make it explicit — future-proofs against a default-change and is the conservative choice for cross-tab state propagation. The speedup comes from automatic widget reruns at sites *without* explicit `st.rerun()` (Add Circuit / Remove Circuit / New Form / clean-save path), which stay fragment-local.
 2. **Never use `st.stop()` inside a fragment** — it halts the whole app, not just the fragment. Use `return` instead. Currently one site: the Analytics empty-cache early-out (`if not records: st.info(...); return`). The module-scope `st.stop()` (gh_config check) is correct because it should halt the whole app.
 3. **Cache loaders MUST live at module scope.** If they were inside Analytics fragment, Entry users on first load would have no `sa_cache_data` (Entry's conflict check at line ~2161 reads `gh_config` and does its own `load_cache` for fresh data, but other Entry paths assume `sa_cache_data` exists in session). Hoisting guarantees both fragments see the cache from the first render.
-4. **Cross-fragment hand-off (Edit flow):** the Analytics-tab "✏️ Edit" button's `on_click=_do_load_edit_from_selection` callback writes widget-bound `sa_patrol`/`sa_unit`/etc. + `sa_editing_record_id`. The Analytics fragment then reruns, showing the "switch to Entry tab" toast. The user clicking the Entry tab is a tab-control widget click — that widget lives at module scope (outside both fragments) → triggers an **app-scope rerun** → Entry fragment re-renders with hydrated widget keys. This is the only cross-fragment state hand-off; it works because tab-clicks are outside any fragment.
+4. **Cross-fragment hand-off (Edit flow):** the Analytics-tab "✏️ Edit" button's `on_click=_do_load_edit_from_selection` callback writes widget-bound `sa_patrol`/`sa_unit`/etc. + `sa_editing_record_id`, **then writes `sa_active_tab = "entry"`**. The segmented_control lives at module scope (outside any fragment), so the next outer rerun sees the new value and the dispatch lands on `render_entry_tab()` automatically — no manual user click needed. `_do_load_edit_from_selection` is the only programmatic writer of `sa_active_tab`; keep it that way.
 5. **Refresh Cache** clears `sa_cache_data` + `sa_benchmarks_loaded` + paired caches, then `st.rerun(scope="app")`. The `scope="app"` is essential here — it forces the hoisted module-scope loaders to re-execute.
+6. **Single-fragment-per-rerun.** With the `if/elif` dispatch, only one fragment is invoked per outer rerun — the others don't even build their widget tree. This is stricter than the prior `st.tabs()` setup, which evaluated all three tab bodies on every rerun (fragment-isolated, but still wasteful).
 
 ## Session-state lifecycle snippets
 
@@ -192,6 +199,9 @@ Run through every button post-merge — session-state regressions are invisible 
 6. Analytics → Delete flow (password `benchmark`) → record removed (no un-delete on 409).
 7. Manage Route Benchmarks → Add → Save Overrides → confirm in `bh-data/data/benchmarks.json`.
 8. Guide tab → Refresh Guide → markdown re-renders.
+9. Analytics → select a row → ✏️ Edit → **lands on Entry view automatically** with form pre-filled and edit-mode banner visible. No manual segmented_control click required.
+10. Click each segmented_control segment manually — Entry / Analytics / Guide each render their full body. Active segment persists across other widget interactions (e.g. land on Analytics, change a filter, segment stays on Analytics).
+11. On Entry, ✖ Cancel Edit clears the banner but does NOT switch views (intentional — minimal-scope navigation; only ✏️ Edit programmatically navigates).
 
 ## Known gotchas
 
@@ -200,3 +210,6 @@ Run through every button post-merge — session-state regressions are invisible 
 - **Conflict-branch saves** must only clear `sa_conflict_state` on success.
 - **Per-circuit widget keys use row IDs**, not indices. `sa_circuit_counter` must only ever increment — never reset or decrement — so IDs stay unique across resets.
 - **`sa_time_mode` radio switches** trigger a one-shot sync from canonical circuit dict → widget keys in the top-of-tab mode-change block. Don't skip this; switching modes without the sync silently zeros times.
+- **`sa_active_tab` is widget-bound and the single-writer rule applies.** Programmatic navigation must write the key only inside `on_click` callbacks. Today only `_do_load_edit_from_selection` does this — it should remain the single writer. If you need a second navigation site, prefer factoring a small helper over scattering writes.
+- **Programmatic session-state clears revert navigation.** If any code path clears session_state wholesale, navigation reverts to the seeded `"entry"` default — that's expected, not a bug.
+- **Visual-style fallback for the view selector.** If the segmented_control appearance is ever undesired, swap for `st.radio(..., horizontal=True, label_visibility="collapsed")` with the same `key="sa_active_tab"`. Drop-in replacement; no other changes needed.
