@@ -1652,6 +1652,14 @@ _TAB_LABELS = {
     "analytics": "📊 Cache Viewer & Analytics",
     "guide":     "📖 Auditor Guide",
 }
+
+# Drain any pending programmatic navigation from a previous rerun's inline
+# handler (e.g. row-select Edit). Must run BEFORE the segmented_control
+# renders — sa_active_tab is widget-bound, so post-render writes crash.
+_pending_view = st.session_state.pop("_sa_pending_view", None)
+if _pending_view in _TAB_LABELS:
+    st.session_state["sa_active_tab"] = _pending_view
+
 st.segmented_control(
     "View",
     options=list(_TAB_LABELS.keys()),
@@ -2892,10 +2900,12 @@ def render_analytics_tab():
         _ids_by_pos = _fdf_r["_id"].tolist()
         _display_df_sel = _fdf_r.drop(columns=["_id"])
 
-        # Edit-load handoff: navigation now jumps to the Entry tab via
-        # sa_active_tab="entry" (set inside _do_load_edit_from_selection).
-        # The Entry fragment's edit-mode banner is the landing-page signal.
-        # Flag is cleared silently — kept as a future hook.
+        # Edit-load handoff: the inline ✏️ Edit button writes
+        # _sa_pending_view="entry" + st.rerun(scope="app"); module-scope
+        # drains the proxy into sa_active_tab so the next rerun's dispatch
+        # routes to render_entry_tab(). The Entry fragment's edit-mode
+        # banner is the landing-page signal. Flag is cleared silently —
+        # kept as a future hook.
         st.session_state.pop("sa_just_loaded", False)
 
         st.caption(
@@ -2966,7 +2976,9 @@ def render_analytics_tab():
                     st.info(f"Selected: **{_del_label}**")
 
                     # Build the arguments _do_load_edit_from_selection needs
-                    # NOW (at render time) — the callback closure captures them.
+                    # at render time — closure default-args capture them so
+                    # the inline button handler can call the helper with no
+                    # arguments and still get the currently-selected record.
                     _erec = _rec_to_del
                     _circs = _erec.get("circuits", [])
                     _sa_circs_edit = []
@@ -3037,18 +3049,35 @@ def render_analytics_tab():
                         st.session_state.sa_calc_results      = None
                         st.session_state.sa_conflict_state    = None
                         st.session_state.sa_just_loaded       = True
-                        # Programmatic tab switch — land the user on Entry
-                        # with the form pre-filled. Legal: inside on_click.
-                        st.session_state["sa_active_tab"]     = "entry"
 
                     _act_edit, _act_del = st.columns(2)
                     with _act_edit:
-                        st.button(
+                        # Inline handler (not on_click) so we can force an
+                        # app-scope rerun. on_click callbacks fired from a
+                        # button inside a fragment trigger fragment-scoped
+                        # reruns, which leaves the Entry fragment with stale
+                        # (un-hydrated) widget state. Inline + st.rerun(
+                        # scope="app") forces the Entry fragment to re-render
+                        # with the freshly-written session_state keys.
+                        if st.button(
                             "✏️ Edit this record",
                             key="sa_rowedit_btn",
                             type="primary",
-                            on_click=_do_load_edit_from_selection,
-                        )
+                        ):
+                            # Hydrate Entry-tab widget keys. Legal inline:
+                            # Entry fragment hasn't run this rerun (dispatch
+                            # routed to Analytics), so its widgets aren't
+                            # instantiated and writes to their keys don't
+                            # raise StreamlitAPIException.
+                            _do_load_edit_from_selection()
+                            # Non-widget proxy: sa_active_tab is widget-bound
+                            # to the segmented_control which already rendered
+                            # at module scope this run, so writing it inline
+                            # here would crash. Instead set a proxy that
+                            # module-scope code drains into sa_active_tab on
+                            # the next rerun (BEFORE segmented_control runs).
+                            st.session_state["_sa_pending_view"] = "entry"
+                            st.rerun(scope="app")
                     with _act_del:
                         if st.button("🗑 Delete this record", key="sa_del_btn_tbl"):
                             st.session_state.sa_pending_delete = _selected_id
@@ -3933,8 +3962,12 @@ def render_guide_tab():
 # ═══════════════════════════════════════════════════════════════════
 # Render — dispatch on sa_active_tab. Only the active fragment runs
 # per outer rerun. Segmented_control click → app rerun → next branch.
-# Programmatic navigation: write sa_active_tab inside an on_click
-# callback (today only _do_load_edit_from_selection does this).
+# Programmatic navigation pattern: an inline button handler writes
+# _sa_pending_view (non-widget proxy) and calls st.rerun(scope="app");
+# module-scope code above drains the proxy into sa_active_tab BEFORE
+# the segmented_control re-renders. on_click callbacks cannot be used
+# for cross-fragment navigation — they trigger fragment-scoped reruns
+# that leave the target fragment with stale (un-hydrated) widget state.
 # ═══════════════════════════════════════════════════════════════════
 _active = st.session_state.get("sa_active_tab", "entry")
 if _active == "entry":
