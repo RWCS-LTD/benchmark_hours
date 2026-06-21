@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+@page { size: A4 portrait; margin: 1.8cm 2cm; }
+body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10pt; color: #1a1a1a; line-height: 1.4; }
+h1 { font-size: 16pt; text-align: center; color: #0d2b45; margin: 0 0 2px 0; }
+h2 { font-size: 11pt; color: #0d2b45; border-bottom: 2px solid #0d2b45; padding-bottom: 3px; margin: 16px 0 7px 0; page-break-after: avoid; }
+p.sub { text-align: center; font-size: 8.5pt; color: #666; margin: 0 0 12px 0; }
+table { width: 100%; border-collapse: collapse; font-size: 9pt; margin-bottom: 8px; }
+th { background: #0d2b45; color: #fff; padding: 4px 7px; text-align: left; }
+th.r, td.r { text-align: right; }
+td { padding: 3px 7px; border-bottom: 1px solid #e0e0e0; }
+tr:nth-child(even) { background: #f7f9fc; }
+tr.total-row td { background: #dce8f0; font-weight: 700; border-top: 2px solid #0d2b45; }
+.exceeded { color: #c0392b; font-weight: 700; }
+.critical { color: #b35900; font-weight: 700; }
+.moderate { color: #7b6000; }
+.healthy  { color: #1b7a34; }
+.low      { color: #4a148c; font-weight: 600; }
+.minimal  { color: #880e4f; }
+.zero     { color: #aaa; }
+.two-col { display: table; width: 100%; border-collapse: separate; border-spacing: 7px 0; margin-bottom: 10px; }
+.col { display: table-cell; width: 50%; vertical-align: top; border: 1px solid #ccc; padding: 9px 11px; }
+.col.red   { border-left: 4px solid #c0392b; background: #fff8f8; }
+.col.green { border-left: 4px solid #388e3c; background: #f5fff5; }
+.col-head { font-size: 10pt; font-weight: 700; margin: 0 0 4px 0; }
+.col-big  { font-size: 13pt; font-weight: 700; margin: 3px 0; }
+.col-body { font-size: 8.5pt; color: #444; margin: 4px 0 0 0; line-height: 1.5; }
+.net-box { border: 2px solid #0d2b45; background: #f0f4f8; padding: 7px 12px; margin: 8px 0 14px 0; font-size: 9pt; }
+.net-box table td { border: none; padding: 2px 10px 2px 0; }
+.net-box td:first-child { font-weight: 600; color: #555; width: 44%; }
+.badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 7.5pt; font-weight: 700; }
+.bd { background:#fdecea; color:#c0392b; border:1px solid #c0392b; }
+.bo { background:#fff3e0; color:#b35900; border:1px solid #e07000; }
+.br { background:#e8eaf6; color:#283593; border:1px solid #5c6bc0; }
+.info { background:#e8f4fd; border-left:4px solid #1a6fa0; padding:6px 10px; margin:6px 0; font-size:8.5pt; }
+.section-head { font-size: 9pt; font-weight: 700; margin: 10px 0 3px 0; page-break-after: avoid; }
+ul { margin: 4px 0; padding-left: 17px; } li { margin: 3px 0; }
+.footer { font-size: 7.5pt; color:#888; margin-top:14px; border-top:1px solid #ddd; padding-top:4px; }
+</style>
+</head>
+<body>
+
+<h1>January 2026 — Benchmark Hours Audit Summary</h1>
+<p class="sub">Audit period: January 1–31, 2026 &nbsp;|&nbsp; 1,400 records reviewed &nbsp;|&nbsp; 107 vehicle units &nbsp;|&nbsp; Generated: 2026-05-14 &nbsp;|&nbsp; FOR INTERNAL REVIEW — DRAFT</p>
+
+<!-- SECTION 1: SETTLEMENT -->
+<h2>1. Settlement Analysis</h2>
+<div class="two-col">
+  <div class="col red">
+    <div class="col-head">A — Confirmed Duplicate / Overlap Overbilling</div>
+    <div class="col-big">120.05 hrs overbilled</div>
+    <div class="col-body">
+      46 flagged (unit, date) groups across 5 patrols. 20 groups have measurable excess hours.<br>
+      <span class="badge bd">DUPLICATE</span> 32 groups — 86.50 hrs &nbsp;
+      <span class="badge bo">OVERLAP</span> 10 groups — 25.40 hrs &nbsp;
+      <span class="badge bd">DUP+REPLACED</span> 3 groups — 8.15 hrs<br><br>
+      <strong>Credit due to MTO: est. $9,004–$12,005</strong><br>
+      (rate: $75/hr standard, $100/hr tow plow)
+    </div>
+  </div>
+  <div class="col green">
+    <div class="col-head">B — Unclaimed Inter-Form Operating Time</div>
+    <div class="col-big">123.68 hrs not billed</div>
+    <div class="col-body">
+      The chain audit credited operating time between consecutive same-unit forms falling within contract gap rules but not captured on any individual form. The contractor did not submit billing for these hours.<br><br>
+      <strong>Contractor's potential supplementary claim: est. $9,276–$12,368</strong><br>
+      For internal review — to be determined before issuing any credit demand.
+    </div>
+  </div>
+</div>
+<div class="net-box">
+  <strong>Net if both A and B are recognised:</strong>
+  <table>
+    <tr><td>Overbilling removed (A)</td><td><span class="exceeded">−120.05 hrs</span> — credit due to MTO</td></tr>
+    <tr><td>Unclaimed time added (B)</td><td><span class="healthy">+123.68 hrs</span> — contractor's potential claim</td></tr>
+    <tr><td style="border-top:1px solid #bbb;padding-top:4px;"><strong>Net variance</strong></td>
+        <td style="border-top:1px solid #bbb;padding-top:4px;"><strong>+3.63 hrs — contractor undercharged overall</strong></td></tr>
+    <tr><td>Net dollar impact (if both recognised)</td><td>Contractor owed est. $272–$363</td></tr>
+  </table>
+  <p style="font-size:8pt;color:#555;margin:5px 0 0 0;"><strong>For internal review:</strong> If only position A is pursued, MTO recovers est. $9,004–$12,005. If both A and B are recognised, the positions nearly cancel and no material payment changes hands.</p>
+</div>
+
+<!-- SECTION 2: ROUTE UTILISATION — FULL -->
+<h2>2. Route Benchmark Utilisation — January vs Season Cap (All Routes)</h2>
+<div class="info">
+  Season total benchmark: <strong>21,690 hrs</strong> across all contract routes. January audited consumption: <strong>8,187 hrs = 37.7% of full-season budget consumed in one month.</strong>
+  Utilisation % = January audited hours ÷ full-season benchmark. Remaining = budget available Feb–Apr.
+</div>
+
+<p class="section-head"><span class="exceeded">&#9632; EXCEEDED — Season cap consumed in January (3 routes)</span></p>
+<table>
+  <thead><tr><th>Route</th><th class="r">Season Cap (hrs)</th><th class="r">Jan Audited (hrs)</th><th class="r">% Used</th><th class="r">Hrs Over Cap</th></tr></thead>
+  <tbody>
+    <tr><td><strong>P-3A</strong></td><td class="r">200</td><td class="r exceeded">320.82</td><td class="r exceeded">160.4%</td><td class="r exceeded">+120.82</td></tr>
+    <tr><td><strong>P-1</strong></td> <td class="r">200</td><td class="r exceeded">212.60</td><td class="r exceeded">106.3%</td><td class="r exceeded">+12.60</td></tr>
+    <tr><td><strong>J-3</strong></td> <td class="r">120</td><td class="r exceeded">126.30</td><td class="r exceeded">105.2%</td><td class="r exceeded">+6.30</td></tr>
+  </tbody>
+</table>
+
+<p class="section-head"><span class="critical">&#9632; CRITICAL — 70–100% of season budget used in January (7 routes)</span></p>
+<table>
+  <thead><tr><th>Route</th><th class="r">Season Cap (hrs)</th><th class="r">Jan Audited (hrs)</th><th class="r">% Used</th><th class="r">Remaining (hrs)</th></tr></thead>
+  <tbody>
+    <tr><td><strong>P-6</strong></td>   <td class="r">120</td> <td class="r">113.37</td><td class="r critical">94.5%</td><td class="r critical">6.63</td></tr>
+    <tr><td><strong>G-2</strong></td>   <td class="r">420</td> <td class="r">384.37</td><td class="r critical">91.5%</td><td class="r critical">35.63</td></tr>
+    <tr><td><strong>P-2</strong></td>   <td class="r">210</td> <td class="r">189.42</td><td class="r critical">90.2%</td><td class="r critical">20.58</td></tr>
+    <tr><td><strong>G-1</strong></td>   <td class="r">300</td> <td class="r">269.68</td><td class="r critical">89.9%</td><td class="r critical">30.32</td></tr>
+    <tr><td><strong>P-5</strong></td>   <td class="r">250</td> <td class="r">186.47</td><td class="r critical">74.6%</td><td class="r critical">63.53</td></tr>
+    <tr><td><strong>P-4</strong></td>   <td class="r">420</td> <td class="r">311.70</td><td class="r critical">74.2%</td><td class="r critical">108.30</td></tr>
+    <tr><td><strong>AYR-2F</strong></td><td class="r">260</td> <td class="r">186.00</td><td class="r critical">71.5%</td><td class="r critical">74.00</td></tr>
+  </tbody>
+</table>
+
+<p class="section-head"><span class="moderate">&#9632; MODERATE — 40–70% of season budget used in January (24 routes)</span></p>
+<table>
+  <thead><tr><th>Route</th><th class="r">Season Cap (hrs)</th><th class="r">Jan Audited (hrs)</th><th class="r">% Used</th><th class="r">Remaining (hrs)</th></tr></thead>
+  <tbody>
+    <tr><td>WK-1A</td> <td class="r">346</td><td class="r">241.98</td><td class="r moderate">69.9%</td><td class="r">104.02</td></tr>
+    <tr><td>C-1</td>   <td class="r">330</td><td class="r">230.38</td><td class="r moderate">69.8%</td><td class="r">99.62</td></tr>
+    <tr><td>K-4</td>   <td class="r">260</td><td class="r">166.18</td><td class="r moderate">63.9%</td><td class="r">93.82</td></tr>
+    <tr><td>G-3A</td>  <td class="r">380</td><td class="r">230.97</td><td class="r moderate">60.8%</td><td class="r">149.03</td></tr>
+    <tr><td>WK-4</td>  <td class="r">390</td><td class="r">235.50</td><td class="r moderate">60.4%</td><td class="r">154.50</td></tr>
+    <tr><td>W-5</td>   <td class="r">260</td><td class="r">156.07</td><td class="r moderate">60.0%</td><td class="r">103.93</td></tr>
+    <tr><td>AYR-1A</td><td class="r">400</td><td class="r">236.10</td><td class="r moderate">59.0%</td><td class="r">163.90</td></tr>
+    <tr><td>K-2A</td>  <td class="r">410</td><td class="r">240.68</td><td class="r moderate">58.7%</td><td class="r">169.32</td></tr>
+    <tr><td>WK-3</td>  <td class="r">440</td><td class="r">256.10</td><td class="r moderate">58.2%</td><td class="r">183.90</td></tr>
+    <tr><td>AYR-3</td> <td class="r">370</td><td class="r">207.93</td><td class="r moderate">56.2%</td><td class="r">162.07</td></tr>
+    <tr><td>K-1E</td>  <td class="r">380</td><td class="r">212.02</td><td class="r moderate">55.8%</td><td class="r">167.98</td></tr>
+    <tr><td>G-4</td>   <td class="r">360</td><td class="r">199.42</td><td class="r moderate">55.4%</td><td class="r">160.58</td></tr>
+    <tr><td>AYR-2G</td><td class="r">280</td><td class="r">151.47</td><td class="r moderate">54.1%</td><td class="r">128.53</td></tr>
+    <tr><td>WK-2A</td> <td class="r">313</td><td class="r">168.63</td><td class="r moderate">53.9%</td><td class="r">144.37</td></tr>
+    <tr><td>WK-2B</td> <td class="r">170</td><td class="r">89.47</td> <td class="r moderate">52.6%</td><td class="r">80.53</td></tr>
+    <tr><td>W-2</td>   <td class="r">310</td><td class="r">146.60</td><td class="r moderate">47.3%</td><td class="r">163.40</td></tr>
+    <tr><td>J-2</td>   <td class="r">225</td><td class="r">104.77</td><td class="r moderate">46.6%</td><td class="r">120.23</td></tr>
+    <tr><td>J-1</td>   <td class="r">370</td><td class="r">168.83</td><td class="r moderate">45.6%</td><td class="r">201.17</td></tr>
+    <tr><td>W-1</td>   <td class="r">310</td><td class="r">133.85</td><td class="r moderate">43.2%</td><td class="r">176.15</td></tr>
+    <tr><td>T-2</td>   <td class="r">530</td><td class="r">227.65</td><td class="r moderate">43.0%</td><td class="r">302.35</td></tr>
+    <tr><td>W-7</td>   <td class="r">430</td><td class="r">179.38</td><td class="r moderate">41.7%</td><td class="r">250.62</td></tr>
+    <tr><td>K-5</td>   <td class="r">320</td><td class="r">132.62</td><td class="r moderate">41.4%</td><td class="r">187.38</td></tr>
+    <tr><td>AYR-4</td> <td class="r">320</td><td class="r">132.60</td><td class="r moderate">41.4%</td><td class="r">187.40</td></tr>
+    <tr><td>K-3</td>   <td class="r">450</td><td class="r">184.72</td><td class="r moderate">41.0%</td><td class="r">265.28</td></tr>
+  </tbody>
+</table>
+
+<p class="section-head"><span class="healthy">&#9632; HEALTHY — 10–40% of season budget used in January (20 routes)</span></p>
+<table>
+  <thead><tr><th>Route</th><th class="r">Season Cap (hrs)</th><th class="r">Jan Audited (hrs)</th><th class="r">% Used</th><th class="r">Remaining (hrs)</th></tr></thead>
+  <tbody>
+    <tr><td>T-1</td>   <td class="r">470</td><td class="r">172.68</td><td class="r healthy">36.7%</td><td class="r">297.32</td></tr>
+    <tr><td>T-3</td>   <td class="r">470</td><td class="r">170.62</td><td class="r healthy">36.3%</td><td class="r">299.38</td></tr>
+    <tr><td>WK-1B</td> <td class="r">193</td><td class="r">66.33</td> <td class="r healthy">34.4%</td><td class="r">126.67</td></tr>
+    <tr><td>K-1F</td>  <td class="r">400</td><td class="r">135.70</td><td class="r healthy">33.9%</td><td class="r">264.30</td></tr>
+    <tr><td>K-1A</td>  <td class="r">140</td><td class="r">46.07</td> <td class="r healthy">32.9%</td><td class="r">93.93</td></tr>
+    <tr><td>AYR-5</td> <td class="r">320</td><td class="r">98.68</td> <td class="r healthy">30.8%</td><td class="r">221.32</td></tr>
+    <tr><td>W-6</td>   <td class="r">430</td><td class="r">131.02</td><td class="r healthy">30.5%</td><td class="r">298.98</td></tr>
+    <tr><td>AYR-1B</td><td class="r">200</td><td class="r">48.13</td> <td class="r healthy">24.1%</td><td class="r">151.87</td></tr>
+    <tr><td>K-1C</td>  <td class="r">140</td><td class="r">31.50</td> <td class="r healthy">22.5%</td><td class="r">108.50</td></tr>
+    <tr><td>K-1D</td>  <td class="r">140</td><td class="r">30.68</td> <td class="r healthy">21.9%</td><td class="r">109.32</td></tr>
+    <tr><td>W3</td>    <td class="r">820</td><td class="r">157.57</td><td class="r healthy">19.2%</td><td class="r">662.43</td></tr>
+    <tr><td>AC-1</td>  <td class="r">150</td><td class="r">28.18</td> <td class="r healthy">18.8%</td><td class="r">121.82</td></tr>
+    <tr><td>K-1B</td>  <td class="r">140</td><td class="r">25.55</td> <td class="r healthy">18.2%</td><td class="r">114.45</td></tr>
+    <tr><td>AYR-2E</td><td class="r">100</td><td class="r">17.22</td> <td class="r healthy">17.2%</td><td class="r">82.78</td></tr>
+    <tr><td>W4</td>    <td class="r">740</td><td class="r">114.62</td><td class="r healthy">15.5%</td><td class="r">625.38</td></tr>
+    <tr><td>P-3B</td>  <td class="r">200</td><td class="r">28.63</td> <td class="r healthy">14.3%</td><td class="r">171.37</td></tr>
+    <tr><td>AYR-2C</td><td class="r">100</td><td class="r">13.88</td> <td class="r healthy">13.9%</td><td class="r">86.12</td></tr>
+    <tr><td>G-3B</td>  <td class="r">330</td><td class="r">37.98</td> <td class="r healthy">11.5%</td><td class="r">292.02</td></tr>
+    <tr><td>AC-2A</td> <td class="r">200</td><td class="r">22.03</td> <td class="r healthy">11.0%</td><td class="r">177.97</td></tr>
+    <tr><td>K-2B</td>  <td class="r">320</td><td class="r">34.13</td> <td class="r healthy">10.7%</td><td class="r">285.87</td></tr>
+  </tbody>
+</table>
+
+<p class="section-head"><span class="low">&#9632; LOW ACTIVITY — 5–10% of season budget used in January (2 routes)</span></p>
+<table style="width:70%;">
+  <thead><tr><th>Route</th><th class="r">Season Cap (hrs)</th><th class="r">Jan Audited (hrs)</th><th class="r">% Used</th><th class="r">Remaining (hrs)</th></tr></thead>
+  <tbody>
+    <tr><td>AYR-2A</td><td class="r">100</td><td class="r">9.82</td><td class="r low">9.8%</td><td class="r">90.18</td></tr>
+    <tr><td>AYR-2B</td><td class="r">100</td><td class="r">5.62</td><td class="r low">5.6%</td><td class="r">94.38</td></tr>
+  </tbody>
+</table>
+
+<p class="section-head"><span class="minimal">&#9632; MINIMAL / NO RECORDS — Anomalously low for peak winter month (16 routes)</span></p>
+<table>
+  <thead><tr><th>Route</th><th class="r">Season Cap (hrs)</th><th class="r">Jan Audited (hrs)</th><th class="r">% Used</th><th class="r">Remaining (hrs)</th></tr></thead>
+  <tbody>
+    <tr><td>NH-2</td>  <td class="r">530</td><td class="r">9.38</td><td class="r minimal">1.8%</td><td class="r">520.62</td></tr>
+    <tr><td>NH-1</td>  <td class="r">500</td><td class="r">7.33</td><td class="r minimal">1.5%</td><td class="r">492.67</td></tr>
+    <tr><td>S-2</td>   <td class="r">460</td><td class="r">4.55</td><td class="r minimal">1.0%</td><td class="r">455.45</td></tr>
+    <tr><td>S-3</td>   <td class="r">260</td><td class="r">2.03</td><td class="r minimal">0.8%</td><td class="r">257.97</td></tr>
+    <tr><td>S-1</td>   <td class="r">500</td><td class="r">2.35</td><td class="r minimal">0.5%</td><td class="r">497.65</td></tr>
+    <tr><td>W-4A</td>  <td class="r">440</td><td class="r zero">0.00</td><td class="r zero">0.0%</td><td class="r">440.00</td></tr>
+    <tr><td>W-3A</td>  <td class="r">420</td><td class="r zero">0.00</td><td class="r zero">0.0%</td><td class="r">420.00</td></tr>
+    <tr><td>W-3B</td>  <td class="r">200</td><td class="r zero">0.00</td><td class="r zero">0.0%</td><td class="r">200.00</td></tr>
+    <tr><td>W-3C</td>  <td class="r">200</td><td class="r zero">0.00</td><td class="r zero">0.0%</td><td class="r">200.00</td></tr>
+    <tr><td>AYR-1C</td><td class="r">200</td><td class="r zero">0.00</td><td class="r zero">0.0%</td><td class="r">200.00</td></tr>
+    <tr><td>WK-1C</td> <td class="r">193</td><td class="r zero">0.00</td><td class="r zero">0.0%</td><td class="r">193.00</td></tr>
+    <tr><td>WK-2C</td> <td class="r">170</td><td class="r zero">0.00</td><td class="r zero">0.0%</td><td class="r">170.00</td></tr>
+    <tr><td>AC-2B</td> <td class="r">160</td><td class="r zero">0.00</td><td class="r zero">0.0%</td><td class="r">160.00</td></tr>
+    <tr><td>W-4B</td>  <td class="r">150</td><td class="r zero">0.00</td><td class="r zero">0.0%</td><td class="r">150.00</td></tr>
+    <tr><td>W-4C</td>  <td class="r">150</td><td class="r zero">0.00</td><td class="r zero">0.0%</td><td class="r">150.00</td></tr>
+    <tr><td>AYR-2D</td><td class="r">100</td><td class="r zero">0.00</td><td class="r zero">0.0%</td><td class="r">100.00</td></tr>
+  </tbody>
+</table>
+
+<!-- SECTION 3: DATA QUALITY -->
+<h2>3. Data Quality — Unmatched Route Codes</h2>
+<p style="font-size:9pt;margin:0 0 5px 0;">
+  <strong>198.48 hrs reported under 20 codes that do not match any contract route.</strong>
+  Hours are included in patrol totals where unit and date are unambiguous but cannot be attributed to a benchmark route. Codes require correction before final settlement.
+</p>
+<table>
+  <thead><tr><th>Code in Record</th><th class="r">Reported (hrs)</th><th>Likely Correct Code</th></tr></thead>
+  <tbody>
+    <tr><td>W3/W4</td>    <td class="r">79.35</td><td>Combined W3 / W4 billing code</td></tr>
+    <tr><td>G3</td>       <td class="r">25.57</td><td>G-3A or G-3B</td></tr>
+    <tr><td>— (blank)</td><td class="r">23.38</td><td>Route not entered</td></tr>
+    <tr><td>K1</td>       <td class="r">16.15</td><td>K-1A / K-1B / K-1C / K-1D / K-1E / K-1F</td></tr>
+    <tr><td>P3</td>       <td class="r">8.77</td> <td>P-3A or P-3B</td></tr>
+    <tr><td>W6/W7</td>    <td class="r">5.98</td> <td>Combined W-6 / W-7 entry</td></tr>
+    <tr><td>S1/S2</td>    <td class="r">5.77</td> <td>Combined S-1 / S-2 entry</td></tr>
+    <tr><td>G2A</td>      <td class="r">4.53</td> <td>G-2 sub-route</td></tr>
+    <tr><td>W7/W6</td>    <td class="r">4.50</td> <td>Combined W-7 / W-6 entry</td></tr>
+    <tr><td>K2E</td>      <td class="r">3.88</td> <td>K-2A or K-2B sub-route</td></tr>
+    <tr><td>K3, K4, K5</td><td class="r">3.80</td><td>K-3 / K-4 / K-5 combined</td></tr>
+    <tr><td>K4/K5</td>    <td class="r">3.30</td> <td>K-4 / K-5 combined</td></tr>
+    <tr><td>1</td>        <td class="r">2.32</td> <td>Unknown — requires clarification</td></tr>
+    <tr><td>C.P.</td>     <td class="r">1.93</td> <td>Unknown — requires clarification</td></tr>
+    <tr><td>WK</td>       <td class="r">1.92</td> <td>WK series — specific route not identified</td></tr>
+    <tr><td>W4/W3</td>    <td class="r">1.73</td> <td>Combined W4 / W3 entry</td></tr>
+    <tr><td>WK24</td>     <td class="r">1.63</td> <td>WK-2A or WK-2B sub-route</td></tr>
+    <tr><td>W2/W4</td>    <td class="r">1.50</td> <td>Combined W-2 / W-4 entry</td></tr>
+    <tr><td>ANG</td>      <td class="r">1.30</td> <td>Unknown — requires clarification</td></tr>
+    <tr><td>K</td>        <td class="r">1.17</td> <td>K series — specific route not identified</td></tr>
+    <tr class="total-row"><td><strong>Total unmatched</strong></td><td class="r"><strong>198.48</strong></td><td></td></tr>
+  </tbody>
+</table>
+
+<!-- SECTION 4: ACTIONS -->
+<h2>4. Actions Required</h2>
+<ul>
+  <li><strong>Internal review: determine settlement basis</strong> (Section 1, positions A and B) before proceeding with any credit demand. If only position A is pursued, credit est. $9,004–$12,005. If both A and B are recognised, net exposure is est. $272–$363 owed to contractor.</li>
+  <li><strong>Investigate 3 routes that exceeded their full-season cap in January:</strong> P-3A (160%), P-1 (106%), J-3 (105%). No further billing should be accepted on these routes without review.</li>
+  <li><strong>Monitor 7 critical-pace routes</strong> (P-6, G-2, P-2, G-1, P-5, P-4, AYR-2F) — 71–95% of season budget consumed in January. All are on pace to exhaust allocation before season end.</li>
+  <li><strong>Respond to 46 flagged billing groups</strong> (full detail in <em>January_2026_Audit_Report.pdf</em>, Section 3). Confirm deduplication and issue credit notes, or provide documentation proving hours are separately billable.</li>
+  <li><strong>Correct 20 unmatched route codes</strong> (198.48 hrs, Section 3) and resubmit before final settlement.</li>
+  <li><strong>Confirm service status for 16 routes with &lt;2% January utilisation</strong> (NH-1, NH-2, S-1, S-2, S-3, and 11 zero-record routes). Verify whether hours were billed under different codes.</li>
+  <li><strong>Assign patrol number to 15 unassigned records.</strong></li>
+</ul>
+
+<!-- SECTION 5: PROOF OF WORK -->
+<h2>5. Proof of Work</h2>
+<table style="font-size:8.5pt;">
+  <tr><td style="font-weight:600;width:34%;border:none;padding:2px 8px 2px 0;">Records reviewed</td><td style="border:none;">1,400 billing records (Jan 1–31, 2026). 45 out-of-period records excluded.</td></tr>
+  <tr><td style="font-weight:600;border:none;padding:2px 8px 2px 0;">Vehicle units</td><td style="border:none;">107 distinct units identified.</td></tr>
+  <tr><td style="font-weight:600;border:none;padding:2px 8px 2px 0;">Event chains</td><td style="border:none;">811 chains constructed. Consecutive same-unit records within 3 hours are merged and audited as one continuous operating period — prevents double-counting of inter-form gaps and simultaneously credits legitimate continuous operation spanning multiple forms.</td></tr>
+  <tr><td style="font-weight:600;border:none;padding:2px 8px 2px 0;">Contract gap rules applied</td><td style="border:none;">Gaps ≤60 min: operating time. Gaps 61–180 min: first 60 min credited. Gaps &gt;180 min: new event. 30-min refuel allowance per completed event.</td></tr>
+  <tr><td style="font-weight:600;border:none;padding:2px 8px 2px 0;">Duplicate detection</td><td style="border:none;">Same unit + same date + overlapping time windows = flagged. 2-min tolerance applied.</td></tr>
+  <tr><td style="font-weight:600;border:none;padding:2px 8px 2px 0;">Record classification</td><td style="border:none;">Clean: 514 &nbsp;|&nbsp; Multiple same-day (no overlap — normal): 814 &nbsp;|&nbsp; <span class="badge bd">Duplicate confirmed</span>: 54 &nbsp;|&nbsp; <span class="badge bo">Overlap confirmed</span>: 14 &nbsp;|&nbsp; <span class="badge br">Duplicate replaced</span>: 4</td></tr>
+  <tr><td style="font-weight:600;border:none;padding:2px 8px 2px 0;">Data source</td><td style="border:none;">bh-data/season_cache.json — SHA 4195b840, last commit 2026-05-11.</td></tr>
+</table>
+
+<div class="footer">
+  January 2026 Benchmark Hours Audit — FOR INTERNAL REVIEW — DRAFT. Generated 2026-05-14. Full flagged-group detail: <em>January_2026_Audit_Report.pdf</em>.
+</div>
+
+</body>
+</html>

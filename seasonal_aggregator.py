@@ -2883,16 +2883,120 @@ def render_analytics_tab():
     # ── View Selector ─────────────────────────────────────────────────
     view = st.radio(
         "View",
-        ["Submissions Table", "Hours by Unit", "Hours by Route",
-         "Hours by Patrol", "Anomaly Log", "Conflicts & Flags", "Timeline",
-         "Overclaim Report"],
+        ["Summary", "Submissions Table", "Hours by Unit", "Hours by Route",
+         "Reported Hours by Patrol (Raw)", "Anomaly Log", "Conflicts & Flags",
+         "Timeline", "Overclaim Report"],
         horizontal=True, key="sa_view"
     )
     st.divider()
 
     display_df = fdf.drop(columns=["_id"])
 
-    if view == "Submissions Table":
+    if view == "Summary":
+        # ── Trust bridge ─────────────────────────────────────────────
+        st.caption(
+            "✔ All numbers below use the same method as the formal audit report. "
+            "We remove duplicate time and only count actual working time."
+        )
+
+        # ── Resolve majority patrol per unit (mirrors audit report logic) ──
+        _sum_unit_patrol: dict = {}
+        for _r in records:
+            _u = _r.get("primary_unit_number") if _r.get("is_spare") else _r.get("unit_number", "?")
+            if not _u:
+                _u = _r.get("unit_number", "?")
+            _p = str(_r.get("patrol_number", "")).strip() or "Unassigned"
+            _sum_unit_patrol.setdefault(_u, {})
+            _sum_unit_patrol[_u][_p] = _sum_unit_patrol[_u].get(_p, 0) + 1
+        _sum_resolved = {
+            _u: max(_counts, key=_counts.get)
+            for _u, _counts in _sum_unit_patrol.items()
+        }
+
+        # ── Compute per-patrol audited and reported hours ─────────────
+        _sum_patrol_audited: dict  = {}
+        _sum_patrol_reported: dict = {}
+        for _unit_key, _chains in all_chains.items():
+            _patrol = _sum_resolved.get(_unit_key, "Unassigned")
+            for _chain in _chains:
+                _ch = _compute_chain_hours(_chain)
+                _sum_patrol_audited[_patrol]  = _sum_patrol_audited.get(_patrol, 0.0)  + _ch["total_operating_min"] / 60
+                _sum_patrol_reported[_patrol] = _sum_patrol_reported.get(_patrol, 0.0) + sum(
+                    _r.get("total_operating_minutes", 0) for _r in _chain
+                ) / 60
+
+        # ── Top-level aggregates ──────────────────────────────────────
+        _total_claimed   = sum(_sum_patrol_reported.values())
+        _total_audited   = sum(_sum_patrol_audited.values())
+        _total_excess    = max(0.0, _total_claimed - _total_audited)
+        _est_overclaim   = _total_excess * 87.50
+        _n_flagged_recs  = sum(1 for _r in records if _r.get("conflict_status", "clean") not in ("clean", ""))
+
+        # ── Narrative line ────────────────────────────────────────────
+        _patrols_needing_review = [
+            _p for _p in _sum_patrol_audited
+            if _sum_patrol_reported.get(_p, 0) - _sum_patrol_audited.get(_p, 0) > 0.1
+        ]
+        _total_patrols = len(_sum_patrol_audited)
+        if _patrols_needing_review:
+            _n_review = len(_patrols_needing_review)
+            st.warning(
+                f"**{_n_review} of {_total_patrols} patrol(s) require review** — "
+                f"{_total_patrols - _n_review} are within expected range."
+            )
+        else:
+            st.success(f"**All {_total_patrols} patrols are clean** — no overclaims detected.")
+
+        # ── 5 metrics ────────────────────────────────────────────────
+        _mc1, _mc2, _mc3, _mc4, _mc5 = st.columns(5)
+        with _mc1:
+            st.metric("Total Claimed Hours", f"{_total_claimed:.2f} hrs")
+        with _mc2:
+            st.metric("Total Audited Hours",  f"{_total_audited:.2f} hrs")
+        with _mc3:
+            _excess_delta = f"-{_total_excess:.2f} hrs" if _total_excess > 0 else None
+            st.metric("Total Excess Hours", f"{_total_excess:.2f} hrs", delta=_excess_delta,
+                      delta_color="inverse")
+        with _mc4:
+            st.metric("Est. Overclaim $", f"${_est_overclaim:,.2f}")
+            st.caption("Blended rate estimate ($75–$100/hr range)")
+        with _mc5:
+            st.metric("Flagged Anomalies", str(_n_flagged_recs))
+
+        st.divider()
+
+        # ── Patrol status table ───────────────────────────────────────
+        _sum_rows = []
+        for _p in sorted(_sum_patrol_audited.keys()):
+            _claimed = _sum_patrol_reported.get(_p, 0.0)
+            _audited = _sum_patrol_audited.get(_p, 0.0)
+            _diff    = _audited - _claimed
+            if _diff < -0.1:
+                _status = "🔴 Review — overclaimed"
+            elif _diff > 0.1:
+                _status = "ℹ️ Undercharged (net)"
+            else:
+                _status = "✅ Clean"
+            _sum_rows.append({
+                "Patrol":       _p,
+                "Claimed Hrs":  round(_claimed, 2),
+                "Audited Hrs":  round(_audited, 2),
+                "Difference":   round(_diff, 2),
+                "Status":       _status,
+            })
+
+        if _sum_rows:
+            _sum_df = pd.DataFrame(_sum_rows).sort_values("Difference", ascending=True)
+            st.dataframe(_sum_df, hide_index=True, use_container_width=True)
+            st.caption(
+                "**Difference = Audited − Claimed.** Negative means the contractor claimed "
+                "more than the audited total. These figures match Section 1 of the formal "
+                "audit report."
+            )
+        else:
+            st.info("No patrol data available for current filters.")
+
+    elif view == "Submissions Table":
         # ── Contained scrollable table with native row selection ──────
         # Align positional index with the ids list so selection.rows maps
         # deterministically even when fdf was derived via filtering.
@@ -3482,7 +3586,13 @@ def render_analytics_tab():
         else:
             st.info("No data for current filters.")
 
-    elif view == "Hours by Patrol":
+    elif view == "Reported Hours by Patrol (Raw)":
+        st.warning(
+            "⚠️ **Uses contractor-submitted hours — not audit-adjusted.** "
+            "Figures here may differ from the formal audit report when a unit submitted "
+            "multiple forms for the same event. Use the **Summary** view for figures "
+            "that match the formal audit report."
+        )
         psummary = (
             fdf.groupby("Patrol")
             .agg(Total_Hours=("Total Hours", "sum"), Units=("Unit", "nunique"), Forms=("Total Hours", "count"))

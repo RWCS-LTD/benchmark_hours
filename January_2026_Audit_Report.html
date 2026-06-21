@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>January 2026 Benchmark Hours Audit Report</title>
+<style>
+
+@page {
+  size: A4 landscape;
+  margin: 1.5cm 1.8cm;
+  @top-center { content: "January 2026 Benchmark Hours Audit — CONFIDENTIAL"; font-size:9pt; color:#888; }
+  @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size:9pt; color:#888; }
+}
+*{ box-sizing:border-box; }
+body{ font-family:'Segoe UI',Arial,sans-serif; font-size:10.5pt; color:#1a1a1a; line-height:1.45; margin:0; padding:0; }
+h1{ font-size:20pt; margin:0 0 4px 0; color:#0d2b45; }
+h2{ font-size:13pt; color:#0d2b45; border-bottom:2px solid #0d2b45; padding-bottom:4px; margin:24px 0 10px 0; page-break-after:avoid; }
+h3{ font-size:11pt; color:#1a4a6e; margin:16px 0 6px 0; page-break-after:avoid; }
+p{ margin:6px 0; } ul{ margin:4px 0; padding-left:18px; } li{ margin:3px 0; }
+.meta-block{ background:#f0f4f8; border-left:4px solid #0d2b45; padding:10px 14px; margin:8px 0 12px 0; font-size:9.5pt; }
+.meta-block td{ padding:1px 14px 1px 0; vertical-align:top; }
+.callout{ background:#fff8e1; border-left:4px solid #f0a500; padding:8px 12px; margin:8px 0; font-size:9.5pt; }
+.callout.info{ background:#e8f4fd; border-left-color:#1a6fa0; }
+.callout.red{ background:#fff0f0; border-left-color:#c0392b; }
+.callout.green{ background:#e8f5e9; border-left-color:#388e3c; }
+.recon-box { border:2px solid #0d2b45; background:#f0f4f8; padding:10px 14px; margin:12px 0; page-break-inside:avoid; }
+.recon-box h4 { margin:0 0 8px 0; font-size:11pt; color:#0d2b45; }
+.recon-grid { width:100%; border-collapse:collapse; }
+.recon-grid td { padding:3px 10px 3px 0; border:none; vertical-align:top; font-size:9.5pt; }
+.recon-grid td:first-child { font-weight:700; color:#555; width:32%; }
+.recon-grid td.val { font-size:11pt; font-weight:700; }
+table{ width:100%; border-collapse:collapse; font-size:9.5pt; margin:6px 0 12px 0; page-break-inside:avoid; }
+th{ background:#0d2b45; color:#fff; padding:5px 8px; text-align:left; font-weight:600; }
+th.num,td.num{ text-align:right; }
+td{ padding:4px 8px; border-bottom:1px solid #e0e0e0; vertical-align:top; }
+tr:nth-child(even){ background:#f7f9fc; }
+tr.total-row td{ background:#dce8f0; font-weight:700; border-top:2px solid #0d2b45; }
+.row-high td{ background:#fdecea !important; }
+.row-med td{ background:#fff3e0 !important; }
+.row-low td{ background:#fffde7 !important; }
+.row-low-act td{ background:#e8eaf6 !important; }
+.row-minimal td{ background:#ede7f6 !important; }
+.row-zero td{ opacity:0.6; }
+.badge{ display:inline-block; padding:2px 7px; border-radius:3px; font-size:8.5pt; font-weight:600; }
+.badge.red{ background:#fdecea; color:#c0392b; border:1px solid #c0392b; }
+.badge.orange{ background:#fff3e0; color:#b35900; border:1px solid #e07000; }
+.badge.green{ background:#e8f5e9; color:#1b5e20; border:1px solid #388e3c; }
+.badge.grey{ background:#f0f0f0; color:#555; border:1px solid #bbb; }
+.badge-type{ display:inline-block; padding:2px 6px; border-radius:3px; font-size:8pt; font-weight:700; }
+.badge-dup{ background:#fdecea; color:#c0392b; }
+.badge-ovl{ background:#fff3e0; color:#b35900; }
+.badge-rep{ background:#e8eaf6; color:#283593; }
+.neg{ color:#c0392b; font-weight:600; }
+.pos{ color:#1b7a34; font-weight:600; }
+.dimmed{ color:#aaa; }
+code{ background:#eee; padding:1px 4px; border-radius:2px; font-size:9pt; }
+.patrol-section{ margin-bottom:16px; page-break-inside:avoid; }
+.no-flag h3{ color:#1b5e20; }
+.green-note{ color:#1b5e20; background:#e8f5e9; padding:6px 10px; border-radius:3px; }
+.util-exceeded{ color:#c0392b; font-weight:700; }
+.util-critical{ color:#b35900; font-weight:700; }
+.util-moderate{ color:#7b6000; }
+.util-healthy{ color:#1b5e20; }
+.util-low_activity{ color:#4a148c; font-weight:600; }
+.util-minimal{ color:#880e4f; font-weight:700; }
+.util-unknown{ color:#555; font-style:italic; }
+.section-break{ page-break-before:always; }
+.legend{ font-size:8.5pt; color:#555; margin:4px 0 8px 0; }
+.summary-box{ border:1px solid #ccc; padding:10px 14px; margin:10px 0; background:#fafafa; page-break-inside:avoid; }
+.summary-box table{ margin:4px 0; }
+.summary-box td{ border:none; padding:2px 10px 2px 0; font-size:10pt; }
+
+</style>
+</head>
+<body>
+
+<h1>January 2026 — Benchmark Hours Audit Report</h1>
+
+<div class="meta-block">
+<table>
+<tr>
+  <td><strong>Audit Period</strong></td><td>January 1 – January 31, 2026</td>
+  <td><strong>Generated</strong></td><td>2026-05-13</td>
+</tr>
+<tr>
+  <td><strong>Records in Scope</strong></td>
+  <td>1,400 verified records. 45 out-of-period records excluded.</td>
+  <td><strong>Classification</strong></td><td>DRAFT — Pending Supervisor Review</td>
+</tr>
+<tr>
+  <td><strong>Contract Coverage</strong></td>
+  <td><strong>Season benchmark:</strong> 21,690 hrs entered. All route benchmarks present.</td>
+  <td></td><td></td>
+</tr>
+</table>
+</div>
+
+<div class="callout info">
+  <strong>Report structure:</strong> Section 1 — headline figures and reconciliation summary. Section 2 — tow plow vs standard breakdown. Section 3 — per-patrol flagged billing groups. Section 4 — route-level benchmark utilisation. Section 5 — full-season extrapolation. Section 6 — recommended actions.
+</div>
+
+<!-- SECTION 1 -->
+<h2>Section 1 — Executive Summary</h2>
+
+<div class="callout info">
+  <strong>Variance:</strong> <span class="neg">Negative (−)</span> = contractor overclaimed. <span class="pos">Positive (+)</span> = contractor undercharged.
+</div>
+
+<table>
+  <thead><tr>
+    <th>Patrol</th><th class="num">Submissions</th><th class="num">Unique Unit‑Days</th>
+    <th class="num">Reported hrs</th><th class="num">Audited hrs</th>
+    <th class="num">Variance hrs</th><th class="num">Variance %</th><th>Audit Status</th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Patrol 11</strong></td>
+      <td class="num">152</td><td class="num">101</td>
+      <td class="num">1,139.50</td><td class="num">1,123.98</td>
+      <td class="num"><span class="neg">−15.52</span></td>
+      <td class="num"><span class="neg">−1.4%</span></td>
+      <td><span class="badge red">Overclaim — 9 flags</span></td>
+    </tr>
+    <tr>
+      <td><strong>Patrol 12</strong></td>
+      <td class="num">333</td><td class="num">246</td>
+      <td class="num">2,428.57</td><td class="num">2,418.52</td>
+      <td class="num"><span class="neg">−10.05</span></td>
+      <td class="num"><span class="neg">−0.4%</span></td>
+      <td><span class="badge red">Overclaim — 6 flags</span></td>
+    </tr>
+    <tr>
+      <td><strong>Patrol 13</strong></td>
+      <td class="num">578</td><td class="num">308</td>
+      <td class="num">2,437.92</td><td class="num">2,435.32</td>
+      <td class="num"><span class="neg">−2.60</span></td>
+      <td class="num"><span class="neg">−0.1%</span></td>
+      <td><span class="badge red">Overclaim — 27 flags</span></td>
+    </tr>
+    <tr>
+      <td><strong>Patrol 14</strong></td>
+      <td class="num">177</td><td class="num">121</td>
+      <td class="num">1,216.90</td><td class="num">1,202.82</td>
+      <td class="num"><span class="neg">−14.08</span></td>
+      <td class="num"><span class="neg">−1.2%</span></td>
+      <td><span class="badge red">Overclaim — 2 flags</span></td>
+    </tr>
+    <tr>
+      <td><strong>Patrol 15</strong></td>
+      <td class="num">78</td><td class="num">57</td>
+      <td class="num">638.18</td><td class="num">662.52</td>
+      <td class="num"><span class="pos">+24.33</span></td>
+      <td class="num"><span class="pos">+3.8%</span></td>
+      <td><span class="badge green">Undercharged — no flags</span></td>
+    </tr>
+    <tr>
+      <td><strong>Patrol 16</strong></td>
+      <td class="num">67</td><td class="num">47</td>
+      <td class="num">572.38</td><td class="num">593.93</td>
+      <td class="num"><span class="pos">+21.55</span></td>
+      <td class="num"><span class="pos">+3.8%</span></td>
+      <td><span class="badge orange">2 flags — undercharged (net)</span></td>
+    </tr>
+    <tr>
+      <td><strong>Unassigned</strong></td>
+      <td class="num">15</td><td class="num">15</td>
+      <td class="num">50.17</td><td class="num">50.17</td>
+      <td class="num"><span class="">0.00</span></td>
+      <td class="num"><span class="">0.0%</span></td>
+      <td><span class="badge grey">Unverifiable — no patrol assigned</span></td>
+    </tr>
+    <tr class="total-row">
+      <td><strong>TOTAL</strong></td>
+      <td class="num">1,400</td><td class="num">895</td>
+      <td class="num">8,483.62</td><td class="num">8,487.25</td>
+      <td class="num"><span class="pos">+3.63</span></td>
+      <td class="num"><span class="">0.0%</span></td>
+      <td><strong>46 flagged groups | 120.05 hrs gross excess</strong></td>
+    </tr></tbody>
+</table>
+<p class="legend">
+  <strong>Submissions</strong> = individual billing records. &nbsp;
+  <strong>Unique Unit‑Days</strong> = distinct (unit, date) groups. &nbsp;
+  <strong>Audited hrs</strong> = after contract deduplication rules.
+</p>
+
+<div class="recon-box">
+  <h4>Reconciliation Summary — Key Findings</h4>
+  <table class="recon-grid">
+    <tr>
+      <td>&#9312; Billing Accuracy<br><span style="font-weight:normal;font-size:9pt;">Same-unit duplicate/overlap records</span></td>
+      <td class="val neg">−120.05 hrs gross<br><span style="font-size:9pt;font-weight:normal;">(<span class="pos">+3.63</span> net — misleading)</span></td>
+      <td style="font-size:9pt;">
+        46 flagged groups | <strong>120.05 hrs gross excess</strong> | est. $9,004–$12,005 credit due to MTO.<br>
+        Net variance (<span class="pos">+3.63</span> hrs) is near-zero because the chain audit also credited 123.68 hrs of inter-form operating time the contractor did not claim. Use gross, not net, for credit discussions.<br>
+        <em>See Section 5 for full explanation.</em>
+      </td>
+    </tr>
+    <tr>
+      <td>&#9313; Route Cap Exceeded<br><span style="font-weight:normal;font-size:9pt;">Jan actual &gt; full-season benchmark</span></td>
+      <td class="val" style="color:#c0392b;">P-3A: 320.82 hrs (season cap: 200 hrs) | P-1: 212.60 hrs (season cap: 200 hrs) | J-3: 126.30 hrs (season cap: 120 hrs)</td>
+      <td style="font-size:9pt;">
+        Route P-3A consumed 160.4% of its full-season allocation in January alone.<br>Route P-1 consumed 106.3% of its full-season allocation in January alone.<br>Route J-3 consumed 105.2% of its full-season allocation in January alone.<br>
+        <em>Requires review before further billing is accepted on these routes.</em>
+      </td>
+    </tr>
+    <tr>
+      <td>&#9314; Deployment / Reporting Gap<br><span style="font-weight:normal;font-size:9pt;">Routes at &lt;5% of season budget in peak month</span></td>
+      <td class="val" style="color:#880e4f;">16 routes flagged</td>
+      <td style="font-size:9pt;">
+        NH-2 (1.8%) NH-1 (1.5%) S-2 (1.0%) S-3 (0.8%) S-1 (0.5%) AC-2B (0.0%) WK-1C (0.0%) WK-2C (0.0%) W-3A (0.0%) W-3B (0.0%) W-3C (0.0%) W-4A (0.0%) W-4B (0.0%) W-4C (0.0%) AYR-1C (0.0%) AYR-2D (0.0%)<br>
+        For the core winter month, this level of activity is anomalously low.
+      </td>
+    </tr>
+  </table>
+</div>
+
+<!-- SECTION 2 -->
+<h2>Section 2 — Tow Plow vs Standard Hours</h2>
+<div class="callout">
+  <strong>Rates:</strong> Tow plow = <strong>$100/hr</strong> &nbsp;|&nbsp; Standard = <strong>$75/hr</strong>. Cost impact = (TP Δ × $100) + (Std Δ × $75).
+</div>
+<table>
+  <thead><tr>
+    <th>Patrol</th>
+    <th class="num">TP Reported</th><th class="num">TP Audited</th><th class="num">TP Δ</th>
+    <th class="num">Std Reported</th><th class="num">Std Audited</th><th class="num">Std Δ</th>
+    <th class="num">Cost Impact</th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Patrol 11</strong></td>
+      <td class="num">151.42</td><td class="num">138.12</td>
+      <td class="num"><span class="neg">−13.30</span></td>
+      <td class="num">988.08</td><td class="num">985.87</td>
+      <td class="num"><span class="neg">−2.22</span></td>
+      <td class="num"><span class="neg">−1,496.25</span></td>
+    </tr>
+    <tr>
+      <td><strong>Patrol 12</strong></td>
+      <td class="num">613.28</td><td class="num">418.47</td>
+      <td class="num"><span class="neg">−194.82</span></td>
+      <td class="num">1,815.28</td><td class="num">2,000.05</td>
+      <td class="num"><span class="pos">+184.77</span></td>
+      <td class="num"><span class="neg">−5,624.17</span></td>
+    </tr>
+    <tr>
+      <td><strong>Patrol 13</strong></td>
+      <td class="num">202.28</td><td class="num">200.62</td>
+      <td class="num"><span class="neg">−1.67</span></td>
+      <td class="num">2,235.63</td><td class="num">2,234.70</td>
+      <td class="num"><span class="neg">−0.93</span></td>
+      <td class="num"><span class="neg">−236.67</span></td>
+    </tr>
+    <tr>
+      <td><strong>Patrol 14</strong></td>
+      <td class="num">474.57</td><td class="num">397.57</td>
+      <td class="num"><span class="neg">−77.00</span></td>
+      <td class="num">742.33</td><td class="num">805.25</td>
+      <td class="num"><span class="pos">+62.92</span></td>
+      <td class="num"><span class="neg">−2,981.25</span></td>
+    </tr>
+    <tr>
+      <td><strong>Patrol 15</strong></td>
+      <td class="num">0.00</td><td class="num">0.00</td>
+      <td class="num"><span class="">0.00</span></td>
+      <td class="num">638.18</td><td class="num">662.52</td>
+      <td class="num"><span class="pos">+24.33</span></td>
+      <td class="num"><span class="pos">+1,825.00</span></td>
+    </tr>
+    <tr>
+      <td><strong>Patrol 16</strong></td>
+      <td class="num">0.00</td><td class="num">16.15</td>
+      <td class="num"><span class="pos">+16.15</span></td>
+      <td class="num">572.38</td><td class="num">577.78</td>
+      <td class="num"><span class="pos">+5.40</span></td>
+      <td class="num"><span class="pos">+2,020.00</span></td>
+    </tr>
+    <tr>
+      <td><strong>Unassigned</strong></td>
+      <td class="num">2.62</td><td class="num">2.62</td>
+      <td class="num"><span class="">0.00</span></td>
+      <td class="num">47.55</td><td class="num">47.55</td>
+      <td class="num"><span class="">0.00</span></td>
+      <td class="num"><span class="">0.00</span></td>
+    </tr>
+    <tr class="total-row">
+      <td><strong>TOTAL</strong></td>
+      <td class="num">1,444.17</td><td class="num">1,173.53</td>
+      <td class="num"><span class="neg">−270.63</span></td>
+      <td class="num">7,039.45</td><td class="num">7,313.72</td>
+      <td class="num"><span class="pos">+274.27</span></td>
+      <td class="num"><span class="neg">−6,493.33</span></td>
+    </tr></tbody>
+</table>
+
+<!-- SECTION 3 -->
+<h2 class="section-break">Section 3 — Per-Patrol Flagged Billing Groups</h2>
+<div class="callout red">
+  <strong>Duplicate definition:</strong> A flag applies only when the <em>same unit number</em> appears more than once for the same date with overlapping time windows. Two different units on the same route is normal and not flagged.
+</div>
+<div class="callout info">
+  <strong>Flag types — </strong>
+  <strong>DUPLICATE:</strong> same unit, same date, identical/fully overlapping windows — only the longest is billable. &nbsp;
+  <strong>OVERLAP:</strong> same unit, partial time overlap — overlapping minutes not separately billable. &nbsp;
+  <strong>REPLACED/DUP+REPLACED:</strong> later submission superseded earlier — earlier record not independently billable. &nbsp;
+  <em>Zero-excess rows (greyed) are shown for transparency only.</em>
+</div>
+<div class="callout">
+  <strong>Gross excess vs net variance — two distinct measures:</strong>
+  The <strong>120.05 hrs gross excess</strong> is the sum of duplicate minutes identified across the 46 flagged groups.
+  The <strong><span class="pos">+3.63</span> hrs net variance</strong> is lower because some patrols audited to more hours than reported (contractor undercharged).
+</div>
+
+<div class="patrol-section">
+  <h3>Patrol 11 — 9 Flagged Groups &nbsp;|&nbsp; 67.13 hrs excess &nbsp;|&nbsp; Est. $5,169 impact</h3>
+  <table>
+    <thead><tr><th>Date</th><th>Unit</th><th>Flag Type</th><th>Routes</th>
+      <th class="num">Excess hrs</th><th class="num">Rate</th><th class="num">Est. $</th><th>TP?</th></tr></thead>
+    <tbody>
+        <tr class="row-high">
+          <td>2026-01-15</td><td><code>S1495E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>W4, W7</td>
+          <td class="num">19.18</td><td class="num">$75/hr</td>
+          <td class="num">$1,439</td><td>Std</td>
+        </tr>
+        <tr class="row-high">
+          <td>2026-01-22</td><td><code>S1178E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>W3, W3/W4, W4</td>
+          <td class="num">16.13</td><td class="num">$75/hr</td>
+          <td class="num">$1,210</td><td>Std</td>
+        </tr>
+        <tr class="row-med">
+          <td>2026-01-11</td><td><code>S1988E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>W2, W3, W4</td>
+          <td class="num">9.67</td><td class="num">$75/hr</td>
+          <td class="num">$725</td><td>Std</td>
+        </tr>
+        <tr class="row-med">
+          <td>2026-01-11</td><td><code>S1986E</code></td>
+          <td><span class="badge-type badge-dup">DUP+REPLACED</span></td><td>W3, W3/W4</td>
+          <td class="num">6.02</td><td class="num">$75/hr</td>
+          <td class="num">$451</td><td>Std</td>
+        </tr>
+        <tr class="row-med">
+          <td>2026-01-15</td><td><code>S1186E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>W1</td>
+          <td class="num">5.35</td><td class="num">$100/hr</td>
+          <td class="num">$535</td><td>&#10003; TP</td>
+        </tr>
+        <tr class="row-med">
+          <td>2026-01-15</td><td><code>S1175E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>W3</td>
+          <td class="num">4.25</td><td class="num">$75/hr</td>
+          <td class="num">$319</td><td>Std</td>
+        </tr>
+        <tr class="row-med">
+          <td>2026-01-04</td><td><code>S1494E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>W6</td>
+          <td class="num">4.20</td><td class="num">$75/hr</td>
+          <td class="num">$315</td><td>Std</td>
+        </tr>
+        <tr class="row-med">
+          <td>2026-01-20</td><td><code>S1494E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>S3, W2</td>
+          <td class="num">2.33</td><td class="num">$75/hr</td>
+          <td class="num">$175</td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-16</td><td><code>S1494E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>W6</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr></tbody>
+  </table>
+</div>
+<div class="patrol-section">
+  <h3>Patrol 12 — 6 Flagged Groups &nbsp;|&nbsp; 17.50 hrs excess &nbsp;|&nbsp; Est. $1,669 impact</h3>
+  <table>
+    <thead><tr><th>Date</th><th>Unit</th><th>Flag Type</th><th>Routes</th>
+      <th class="num">Excess hrs</th><th class="num">Rate</th><th class="num">Est. $</th><th>TP?</th></tr></thead>
+    <tbody>
+        <tr class="row-med">
+          <td>2026-01-21</td><td><code>S1172E</code></td>
+          <td><span class="badge-type badge-ovl">OVERLAP</span></td><td>P1, P2, P3, P4, P5, WK2A</td>
+          <td class="num">8.85</td><td class="num">$100/hr</td>
+          <td class="num">$885</td><td>&#10003; TP</td>
+        </tr>
+        <tr class="row-med">
+          <td>2026-01-02</td><td><code>S1173E</code></td>
+          <td><span class="badge-type badge-ovl">OVERLAP</span></td><td>P1, WK1A</td>
+          <td class="num">5.38</td><td class="num">$100/hr</td>
+          <td class="num">$538</td><td>&#10003; TP</td>
+        </tr>
+        <tr class="row-low">
+          <td>2026-01-15</td><td><code>S1174E</code></td>
+          <td><span class="badge-type badge-dup">DUP+REPLACED</span></td><td>WK1B, WK2B, WK3, WK4</td>
+          <td class="num">1.83</td><td class="num">$75/hr</td>
+          <td class="num">$138</td><td>Std</td>
+        </tr>
+        <tr class="row-low">
+          <td>2026-01-23</td><td><code>S1174E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>WK3</td>
+          <td class="num">1.43</td><td class="num">$75/hr</td>
+          <td class="num">$108</td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-02</td><td><code>S1174E</code></td>
+          <td><span class="badge-type badge-ovl">OVERLAP</span></td><td>WK3, WK4</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-06</td><td><code>S1473E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>P5</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr></tbody>
+  </table>
+</div>
+<div class="patrol-section">
+  <h3>Patrol 13 — 27 Flagged Groups &nbsp;|&nbsp; 24.13 hrs excess &nbsp;|&nbsp; Est. $1,809 impact</h3>
+  <table>
+    <thead><tr><th>Date</th><th>Unit</th><th>Flag Type</th><th>Routes</th>
+      <th class="num">Excess hrs</th><th class="num">Rate</th><th class="num">Est. $</th><th>TP?</th></tr></thead>
+    <tbody>
+        <tr class="row-med">
+          <td>2026-01-14</td><td><code>S1497E</code></td>
+          <td><span class="badge-type badge-ovl">OVERLAP</span></td><td>K2A, K5</td>
+          <td class="num">5.75</td><td class="num">$75/hr</td>
+          <td class="num">$431</td><td>Std</td>
+        </tr>
+        <tr class="row-med">
+          <td>2026-01-21</td><td><code>S1040E</code></td>
+          <td><span class="badge-type badge-ovl">OVERLAP</span></td><td>A2F, A5</td>
+          <td class="num">5.42</td><td class="num">$75/hr</td>
+          <td class="num">$406</td><td>Std</td>
+        </tr>
+        <tr class="row-med">
+          <td>2026-01-26</td><td><code>S1299E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K1D, K2B</td>
+          <td class="num">4.13</td><td class="num">$75/hr</td>
+          <td class="num">$310</td><td>Std</td>
+        </tr>
+        <tr class="row-med">
+          <td>2026-01-07</td><td><code>S1949E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K2A</td>
+          <td class="num">3.95</td><td class="num">$75/hr</td>
+          <td class="num">$296</td><td>Std</td>
+        </tr>
+        <tr class="row-med">
+          <td>2026-01-21</td><td><code>S1498E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>A4</td>
+          <td class="num">2.52</td><td class="num">$75/hr</td>
+          <td class="num">$189</td><td>Std</td>
+        </tr>
+        <tr class="row-med">
+          <td>2026-01-23</td><td><code>S1962E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>A2A</td>
+          <td class="num">2.07</td><td class="num">$75/hr</td>
+          <td class="num">$155</td><td>Std</td>
+        </tr>
+        <tr class="row-low">
+          <td>2026-01-07</td><td><code>S1193E</code></td>
+          <td><span class="badge-type badge-dup">DUP+REPLACED</span></td><td>K3, K4, K5</td>
+          <td class="num">0.30</td><td class="num">$75/hr</td>
+          <td class="num">$22</td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-01</td><td><code>S1039E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K1F</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-03</td><td><code>S1949E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K2A</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-06</td><td><code>S1488E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K1F</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-06</td><td><code>S1497E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K1E</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-07</td><td><code>S1488E</code></td>
+          <td><span class="badge-type badge-rep">REPLACED</span></td><td>K1F</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-10</td><td><code>S1187E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K1E, K5</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-10</td><td><code>S1193E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K4</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-10</td><td><code>S1949E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K2A</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-10</td><td><code>S1146E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K1F</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-11</td><td><code></code></td>
+          <td><span class="badge-type badge-ovl">OVERLAP</span></td><td>K3</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-19</td><td><code>S1187E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K1F</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-19</td><td><code>S1189E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K3</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-22</td><td><code>S2002E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K2A</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$100/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>&#10003; TP</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-26</td><td><code>S1146E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K1E</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-26</td><td><code>S1189E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>K5</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-01</td><td><code>S1498E</code></td>
+          <td><span class="badge-type badge-ovl">OVERLAP</span></td><td>A2G</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-22</td><td><code>S1241E</code></td>
+          <td><span class="badge-type badge-ovl">OVERLAP</span></td><td>A3</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-23</td><td><code>S1987E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>A1A</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-27</td><td><code>S1498E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>A5</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-27</td><td><code>S1489E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>A2G</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr></tbody>
+  </table>
+</div>
+<div class="patrol-section">
+  <h3>Patrol 14 — 2 Flagged Groups &nbsp;|&nbsp; 11.28 hrs excess &nbsp;|&nbsp; Est. $1,128 impact</h3>
+  <table>
+    <thead><tr><th>Date</th><th>Unit</th><th>Flag Type</th><th>Routes</th>
+      <th class="num">Excess hrs</th><th class="num">Rate</th><th class="num">Est. $</th><th>TP?</th></tr></thead>
+    <tbody>
+        <tr class="row-high">
+          <td>2026-01-29</td><td><code>S1191E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>G1, G2</td>
+          <td class="num">11.28</td><td class="num">$100/hr</td>
+          <td class="num">$1,128</td><td>&#10003; TP</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-02</td><td><code>S1485E</code></td>
+          <td><span class="badge-type badge-dup">DUPLICATE</span></td><td>G2, G3B</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr></tbody>
+  </table>
+</div>
+<div class="patrol-section no-flag">
+  <h3>Patrol 15 — No Billing Anomalies Detected</h3>
+  <p class="green-note">&#10003; All Patrol 15 submissions passed the deduplication check.</p>
+</div>
+<div class="patrol-section">
+  <h3>Patrol 16 — 2 Flagged Groups &nbsp;|&nbsp; 0.00 hrs excess &nbsp;|&nbsp; Est. $0 impact</h3>
+  <table>
+    <thead><tr><th>Date</th><th>Unit</th><th>Flag Type</th><th>Routes</th>
+      <th class="num">Excess hrs</th><th class="num">Rate</th><th class="num">Est. $</th><th>TP?</th></tr></thead>
+    <tbody>
+        <tr class="row-zero">
+          <td>2026-01-11</td><td><code></code></td>
+          <td><span class="badge-type badge-ovl">OVERLAP</span></td><td>T1, T2, T3</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr>
+        <tr class="row-zero">
+          <td>2026-01-27</td><td><code>S1490E</code></td>
+          <td><span class="badge-type badge-ovl">OVERLAP</span></td><td>T1</td>
+          <td class="num"><span class="dimmed">0.00</span></td><td class="num">$75/hr</td>
+          <td class="num"><span class="dimmed">$0</span></td><td>Std</td>
+        </tr></tbody>
+  </table>
+</div>
+
+<!-- SECTION 4 -->
+<h2 class="section-break">Section 4 — Route Benchmark Utilisation</h2>
+<div class="callout info">
+  <strong>Utilisation %</strong> = January audited hours ÷ full-season benchmark. January is the peak winter month. A route using more than 40% of its season budget in January is on pace to exhaust the contract allocation before season end. Routes above 100% have already exceeded their full-season cap.
+</div>
+<table>
+  <thead><tr>
+    <th>Route</th>
+    <th class="num">Season Benchmark (hrs)</th>
+    <th class="num">Jan Actual (audited hrs)</th>
+    <th class="num">Jan / Season %</th>
+    <th>Status</th>
+  </tr></thead>
+  <tbody>
+    <tr class="row-high">
+      <td><strong>P-3A</strong></td>
+      <td class="num">200</td>
+      <td class="num">320.82</td>
+      <td class="num">160.4%</td>
+      <td><span class="util-exceeded">EXCEEDED</span></td>
+    </tr>
+    <tr class="row-high">
+      <td><strong>P-1</strong></td>
+      <td class="num">200</td>
+      <td class="num">212.60 (23.73 TP)</td>
+      <td class="num">106.3%</td>
+      <td><span class="util-exceeded">EXCEEDED</span></td>
+    </tr>
+    <tr class="row-high">
+      <td><strong>J-3</strong></td>
+      <td class="num">120</td>
+      <td class="num">126.30</td>
+      <td class="num">105.2%</td>
+      <td><span class="util-exceeded">EXCEEDED</span></td>
+    </tr>
+    <tr class="row-med">
+      <td><strong>P-6</strong></td>
+      <td class="num">120</td>
+      <td class="num">113.37</td>
+      <td class="num">94.5%</td>
+      <td><span class="util-critical">Critical</span></td>
+    </tr>
+    <tr class="row-med">
+      <td><strong>G-2</strong></td>
+      <td class="num">420</td>
+      <td class="num">384.37 (113.36 TP)</td>
+      <td class="num">91.5%</td>
+      <td><span class="util-critical">Critical</span></td>
+    </tr>
+    <tr class="row-med">
+      <td><strong>P-2</strong></td>
+      <td class="num">210</td>
+      <td class="num">189.42 (76.19 TP)</td>
+      <td class="num">90.2%</td>
+      <td><span class="util-critical">Critical</span></td>
+    </tr>
+    <tr class="row-med">
+      <td><strong>G-1</strong></td>
+      <td class="num">300</td>
+      <td class="num">269.68 (226.22 TP)</td>
+      <td class="num">89.9%</td>
+      <td><span class="util-critical">Critical</span></td>
+    </tr>
+    <tr class="row-med">
+      <td><strong>P-5</strong></td>
+      <td class="num">250</td>
+      <td class="num">186.47</td>
+      <td class="num">74.6%</td>
+      <td><span class="util-critical">Critical</span></td>
+    </tr>
+    <tr class="row-med">
+      <td><strong>P-4</strong></td>
+      <td class="num">420</td>
+      <td class="num">311.70 (11.35 TP)</td>
+      <td class="num">74.2%</td>
+      <td><span class="util-critical">Critical</span></td>
+    </tr>
+    <tr class="row-med">
+      <td><strong>AYR-2F</strong></td>
+      <td class="num">260</td>
+      <td class="num">186.00 (0.55 TP)</td>
+      <td class="num">71.5%</td>
+      <td><span class="util-critical">Critical</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>WK-1A</strong></td>
+      <td class="num">346</td>
+      <td class="num">241.98 (157.04 TP)</td>
+      <td class="num">69.9%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>C-1</strong></td>
+      <td class="num">330</td>
+      <td class="num">230.38</td>
+      <td class="num">69.8%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>K-4</strong></td>
+      <td class="num">260</td>
+      <td class="num">166.18</td>
+      <td class="num">63.9%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>G-3A</strong></td>
+      <td class="num">380</td>
+      <td class="num">230.97 (91.18 TP)</td>
+      <td class="num">60.8%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>WK-4</strong></td>
+      <td class="num">390</td>
+      <td class="num">235.50 (2.39 TP)</td>
+      <td class="num">60.4%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>W-5</strong></td>
+      <td class="num">260</td>
+      <td class="num">156.07</td>
+      <td class="num">60.0%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>AYR-1A</strong></td>
+      <td class="num">400</td>
+      <td class="num">236.10 (76.10 TP)</td>
+      <td class="num">59.0%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>K-2A</strong></td>
+      <td class="num">410</td>
+      <td class="num">240.68 (66.45 TP)</td>
+      <td class="num">58.7%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>WK-3</strong></td>
+      <td class="num">440</td>
+      <td class="num">256.10</td>
+      <td class="num">58.2%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>AYR-3</strong></td>
+      <td class="num">370</td>
+      <td class="num">207.93</td>
+      <td class="num">56.2%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>K-1E</strong></td>
+      <td class="num">380</td>
+      <td class="num">212.02</td>
+      <td class="num">55.8%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>G-4</strong></td>
+      <td class="num">360</td>
+      <td class="num">199.42 (0.87 TP)</td>
+      <td class="num">55.4%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>AYR-2G</strong></td>
+      <td class="num">280</td>
+      <td class="num">151.47</td>
+      <td class="num">54.1%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>WK-2A</strong></td>
+      <td class="num">313</td>
+      <td class="num">168.63 (96.80 TP)</td>
+      <td class="num">53.9%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>WK-2B</strong></td>
+      <td class="num">170</td>
+      <td class="num">89.47 (41.65 TP)</td>
+      <td class="num">52.6%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>W-2</strong></td>
+      <td class="num">310</td>
+      <td class="num">146.60 (5.45 TP)</td>
+      <td class="num">47.3%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>J-2</strong></td>
+      <td class="num">225</td>
+      <td class="num">104.77</td>
+      <td class="num">46.6%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>J-1</strong></td>
+      <td class="num">370</td>
+      <td class="num">168.83</td>
+      <td class="num">45.6%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>W-1</strong></td>
+      <td class="num">310</td>
+      <td class="num">133.85 (108.70 TP)</td>
+      <td class="num">43.2%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>T-2</strong></td>
+      <td class="num">530</td>
+      <td class="num">227.65</td>
+      <td class="num">43.0%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>W-7</strong></td>
+      <td class="num">430</td>
+      <td class="num">179.38</td>
+      <td class="num">41.7%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>K-5</strong></td>
+      <td class="num">320</td>
+      <td class="num">132.62</td>
+      <td class="num">41.4%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>AYR-4</strong></td>
+      <td class="num">320</td>
+      <td class="num">132.60</td>
+      <td class="num">41.4%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="row-low">
+      <td><strong>K-3</strong></td>
+      <td class="num">450</td>
+      <td class="num">184.72</td>
+      <td class="num">41.0%</td>
+      <td><span class="util-moderate">Moderate</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>T-1</strong></td>
+      <td class="num">470</td>
+      <td class="num">172.68</td>
+      <td class="num">36.7%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>T-3</strong></td>
+      <td class="num">470</td>
+      <td class="num">170.62</td>
+      <td class="num">36.3%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>WK-1B</strong></td>
+      <td class="num">193</td>
+      <td class="num">66.33 (5.57 TP)</td>
+      <td class="num">34.4%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>K-1F</strong></td>
+      <td class="num">400</td>
+      <td class="num">135.70</td>
+      <td class="num">33.9%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>K-1A</strong></td>
+      <td class="num">140</td>
+      <td class="num">46.07 (8.53 TP)</td>
+      <td class="num">32.9%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>AYR-5</strong></td>
+      <td class="num">320</td>
+      <td class="num">98.68</td>
+      <td class="num">30.8%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>W-6</strong></td>
+      <td class="num">430</td>
+      <td class="num">131.02</td>
+      <td class="num">30.5%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>AYR-1B</strong></td>
+      <td class="num">200</td>
+      <td class="num">48.13</td>
+      <td class="num">24.1%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>K-1C</strong></td>
+      <td class="num">140</td>
+      <td class="num">31.50 (3.98 TP)</td>
+      <td class="num">22.5%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>K-1D</strong></td>
+      <td class="num">140</td>
+      <td class="num">30.68</td>
+      <td class="num">21.9%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>AC-1</strong></td>
+      <td class="num">150</td>
+      <td class="num">28.18</td>
+      <td class="num">18.8%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>K-1B</strong></td>
+      <td class="num">140</td>
+      <td class="num">25.55 (1.76 TP)</td>
+      <td class="num">18.2%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>AYR-2E</strong></td>
+      <td class="num">100</td>
+      <td class="num">17.22</td>
+      <td class="num">17.2%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>P-3B</strong></td>
+      <td class="num">200</td>
+      <td class="num">28.63</td>
+      <td class="num">14.3%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>AYR-2C</strong></td>
+      <td class="num">100</td>
+      <td class="num">13.88 (3.75 TP)</td>
+      <td class="num">13.9%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>G-3B</strong></td>
+      <td class="num">330</td>
+      <td class="num">37.98 (0.28 TP)</td>
+      <td class="num">11.5%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>AC-2A</strong></td>
+      <td class="num">200</td>
+      <td class="num">22.03</td>
+      <td class="num">11.0%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="">
+      <td><strong>K-2B</strong></td>
+      <td class="num">320</td>
+      <td class="num">34.13</td>
+      <td class="num">10.7%</td>
+      <td><span class="util-healthy">Healthy</span></td>
+    </tr>
+    <tr class="row-low-act">
+      <td><strong>AYR-2A</strong></td>
+      <td class="num">100</td>
+      <td class="num">9.82</td>
+      <td class="num">9.8%</td>
+      <td><span class="util-low_activity">Low Activity</span></td>
+    </tr>
+    <tr class="row-low-act">
+      <td><strong>AYR-2B</strong></td>
+      <td class="num">100</td>
+      <td class="num">5.62 (4.52 TP)</td>
+      <td class="num">5.6%</td>
+      <td><span class="util-low_activity">Low Activity</span></td>
+    </tr>
+    <tr class="row-minimal">
+      <td><strong>NH-2</strong></td>
+      <td class="num">530</td>
+      <td class="num">9.38</td>
+      <td class="num">1.8%</td>
+      <td><span class="util-minimal">Minimal</span></td>
+    </tr>
+    <tr class="row-minimal">
+      <td><strong>NH-1</strong></td>
+      <td class="num">500</td>
+      <td class="num">7.33</td>
+      <td class="num">1.5%</td>
+      <td><span class="util-minimal">Minimal</span></td>
+    </tr>
+    <tr class="row-minimal">
+      <td><strong>S-2</strong></td>
+      <td class="num">460</td>
+      <td class="num">4.55</td>
+      <td class="num">1.0%</td>
+      <td><span class="util-minimal">Minimal</span></td>
+    </tr>
+    <tr class="row-minimal">
+      <td><strong>S-3</strong></td>
+      <td class="num">260</td>
+      <td class="num">2.03</td>
+      <td class="num">0.8%</td>
+      <td><span class="util-minimal">Minimal</span></td>
+    </tr>
+    <tr class="row-minimal">
+      <td><strong>S-1</strong></td>
+      <td class="num">500</td>
+      <td class="num">2.35</td>
+      <td class="num">0.5%</td>
+      <td><span class="util-minimal">Minimal</span></td>
+    </tr>
+    <tr class="row-minimal">
+      <td><strong>AC-2B</strong></td>
+      <td class="num">160</td>
+      <td class="num">0.00</td>
+      <td class="num">0.0%</td>
+      <td><span class="util-minimal">Minimal</span></td>
+    </tr>
+    <tr class="row-minimal">
+      <td><strong>WK-1C</strong></td>
+      <td class="num">193</td>
+      <td class="num">0.00</td>
+      <td class="num">0.0%</td>
+      <td><span class="util-minimal">Minimal</span></td>
+    </tr>
+    <tr class="row-minimal">
+      <td><strong>WK-2C</strong></td>
+      <td class="num">170</td>
+      <td class="num">0.00</td>
+      <td class="num">0.0%</td>
+      <td><span class="util-minimal">Minimal</span></td>
+    </tr>
+    <tr class="row-minimal">
+      <td><strong>AYR-1C</strong></td>
+      <td class="num">200</td>
+      <td class="num">0.00</td>
+      <td class="num">0.0%</td>
+      <td><span class="util-minimal">Minimal</span></td>
+    </tr>
+    <tr class="row-minimal">
+      <td><strong>AYR-2D</strong></td>
+      <td class="num">100</td>
+      <td class="num">0.00</td>
+      <td class="num">0.0%</td>
+      <td><span class="util-minimal">Minimal</span></td>
+    </tr>
+  </tbody>
+</table>
+<p class="legend">
+  <span class="util-exceeded">&#9632; EXCEEDED</span> &gt;100% &nbsp;
+  <span class="util-critical">&#9632; Critical</span> 70–100% &nbsp;
+  <span class="util-moderate">&#9632; Moderate</span> 40–70% &nbsp;
+  <span class="util-healthy">&#9632; Healthy</span> 10–40% &nbsp;
+  <span class="util-low_activity">&#9632; Low Activity</span> 5–10% &nbsp;
+  <span class="util-minimal">&#9632; Minimal</span> &lt;5% (peak-month activity anomalously low) &nbsp;&nbsp;
+  TP = tow plow hours within January total.
+</p>
+
+<div class="summary-box">
+  <strong>Exceeded full-season cap:</strong>&nbsp; <strong>P-3A</strong> (160.4%) &nbsp; <strong>P-1</strong> (106.3%) &nbsp; <strong>J-3</strong> (105.2%)<br><br>
+  <strong>Critical pace (70–100%):</strong>&nbsp; P-6 (94.5%) &nbsp; G-2 (91.5%) &nbsp; P-2 (90.2%) &nbsp; G-1 (89.9%) &nbsp; P-5 (74.6%) &nbsp; P-4 (74.2%) &nbsp; AYR-2F (71.5%)<br><br>
+  <strong>Low Activity (5–10%):</strong>&nbsp; <strong>AYR-2A</strong> (9.8% — 9.82 hrs) &nbsp; <strong>AYR-2B</strong> (5.6% — 5.62 hrs)<br><br>
+  <strong>Minimal (&lt;5%) — effectively no January service recorded:</strong>&nbsp; <strong>NH-2</strong> (1.8% — 9.38 hrs) &nbsp; <strong>NH-1</strong> (1.5% — 7.33 hrs) &nbsp; <strong>S-2</strong> (1.0% — 4.55 hrs) &nbsp; <strong>S-3</strong> (0.8% — 2.03 hrs) &nbsp; <strong>S-1</strong> (0.5% — 2.35 hrs) &nbsp; <strong>AC-2B</strong> (0.0% — 0.00 hrs) &nbsp; <strong>WK-1C</strong> (0.0% — 0.00 hrs) &nbsp; <strong>WK-2C</strong> (0.0% — 0.00 hrs) &nbsp; <strong>W-3A</strong> (0.0% — 0.00 hrs) &nbsp; <strong>W-3B</strong> (0.0% — 0.00 hrs) &nbsp; <strong>W-3C</strong> (0.0% — 0.00 hrs) &nbsp; <strong>W-4A</strong> (0.0% — 0.00 hrs) &nbsp; <strong>W-4B</strong> (0.0% — 0.00 hrs) &nbsp; <strong>W-4C</strong> (0.0% — 0.00 hrs) &nbsp; <strong>AYR-1C</strong> (0.0% — 0.00 hrs) &nbsp; <strong>AYR-2D</strong> (0.0% — 0.00 hrs)
+</div>
+
+<h3>Routes with no January billing records</h3>
+<table>
+  <thead><tr><th>Route(s)</th><th class="num">Season Benchmark (hrs)</th><th>Status</th></tr></thead>
+  <tbody>
+<tr><td><strong>AC-2B</strong></td><td class="num">160</td><td><span class="badge grey">No January records</span></td></tr>
+<tr><td><strong>WK-1C</strong></td><td class="num">193</td><td><span class="badge grey">No January records</span></td></tr>
+<tr><td><strong>WK-2C</strong></td><td class="num">170</td><td><span class="badge grey">No January records</span></td></tr>
+<tr><td><strong>AYR-1C</strong></td><td class="num">200</td><td><span class="badge grey">No January records</span></td></tr>
+<tr><td><strong>AYR-2D</strong></td><td class="num">100</td><td><span class="badge grey">No January records</span></td></tr>
+  </tbody>
+</table>
+
+<h3>Combined billing codes</h3>
+<table>
+  <thead><tr><th>Code</th><th class="num">Combined Benchmark (hrs)</th><th>Note</th></tr></thead>
+  <tbody>
+<tr><td><strong>W3</strong></td><td class="num">820</td><td>157.57 hrs recorded — sub-route split not available</td></tr>
+<tr><td><strong>W4</strong></td><td class="num">740</td><td>114.62 hrs recorded — sub-route split not available</td></tr>
+  </tbody>
+</table>
+
+<h3>Data Quality — Unmatched Route Codes</h3>
+<div class="callout info">
+  The following route codes appear in billing records but do not match any contract route. These are likely data-entry abbreviations, combined codes, or errors. Hours are included in patrol totals where the unit and date are unambiguous. Codes should be corrected at source.
+  <br><strong>Total hours under unmatched codes: 256.85 hrs</strong>
+</div>
+<table>
+  <thead><tr><th>Code in Record</th><th class="num">Jan Hours (audited)</th><th>Status</th></tr></thead>
+  <tbody>
+<tr><td><strong>W3/W4</strong></td><td class="num">93.70 (5.73 TP)</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>G3</strong></td><td class="num">40.85</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>—</strong></td><td class="num">32.55 (3.11 TP)</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>K1</strong></td><td class="num">19.65</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>P3</strong></td><td class="num">10.35</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>G2A</strong></td><td class="num">7.90</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>S1/S2</strong></td><td class="num">7.88 (2.38 TP)</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>W6/W7</strong></td><td class="num">7.48</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>K2E</strong></td><td class="num">5.07</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>W7/W6</strong></td><td class="num">5.00</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>K4/K5</strong></td><td class="num">4.30</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>K3, K4, K5</strong></td><td class="num">4.30</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>W4/W3</strong></td><td class="num">2.73</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>1</strong></td><td class="num">2.45</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>C.P.</strong></td><td class="num">2.43</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>WK</strong></td><td class="num">2.28</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>K</strong></td><td class="num">2.17</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>W2/W4</strong></td><td class="num">2.00</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>WK24</strong></td><td class="num">1.95 (1.25 TP)</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+<tr><td><strong>ANG</strong></td><td class="num">1.80</td><td><span class="badge grey">Unmatched route code</span></td></tr>
+  </tbody>
+</table>
+
+<!-- SECTION 5 -->
+<h2>Section 5 — Budget Burn Rate &amp; Settlement Context</h2>
+<div class="callout red">
+  <strong>Note on extrapolation:</strong> A simple January ÷ 6.5 months projection is not used here. January alone consumed 39.1% of the total season benchmark — meaning January is the dominant billing month for this contract, not one-sixth of the season. Applying a calendar-proportional multiplier to January would project a full-season total of approximately 3× the contract value, which is arithmetically correct but operationally meaningless as a forecast. The burn-rate figures below are the appropriate basis for settlement discussion.
+</div>
+<div class="summary-box">
+  <table>
+    <tr><td><strong>Season benchmark</strong></td><td>21,690 hrs</td></tr>
+    <tr><td><strong>January audited consumption</strong></td><td><strong>8,487.25 hrs — 39.1% of annual benchmark in one month</strong></td></tr>
+    <tr><td>Remaining season budget (Feb–Apr 30)</td><td>13,202.75 hrs</td></tr>
+    <tr><td colspan="2" style="padding-top:8px;border-top:1px solid #ccc;"><strong>Billing accuracy findings</strong></td></tr>
+    <tr><td><strong>Gross flagged excess (duplicates / overlaps)</strong></td><td><strong><span class="neg">−120.05 hrs across 46 groups</span> &nbsp; est. $9,004–$12,005 credit due to MTO</strong></td></tr>
+    <tr><td>Net variance (all records)</td><td><span class="pos">+3.63</span> hrs &nbsp; <em>Not used for settlement — see note</em></td></tr>
+    <tr><td colspan="2" style="padding-top:8px;border-top:1px solid #ccc;"><strong>Route cap exceedances (January only)</strong></td></tr>
+    <tr><td>Hours billed above season cap on exceeded routes</td><td><span class="neg">−139.72 hrs above individual route caps</span> &nbsp; (P-3A, P-1, J-3)</td></tr>
+  </table>
+</div>
+<div class="callout info">
+  <strong>Note on the net variance.</strong>
+  The net variance of <span class="pos">+3.63</span> hrs is the difference between the chain-audited total and the sum of individual form totals. The chain audit credits 123.68 hrs of inter-form operating time — gaps between consecutive forms for the same unit that the contract counts as continuous operation but that were not captured on any individual form. Against this, 120.05 hrs of duplicate and overlap billing was removed. The two effects nearly cancel: 123.68 − 120.05 = <span class="pos">+3.63</span> hrs net. The contractor is not owed the unclaimed inter-form hours — they did not bill for them. The gross flagged excess (<strong>est. $9,004–$12,005</strong>) is the appropriate figure for credit discussions.
+</div>
+
+<!-- SECTION 6 -->
+<h2>Section 6 — Recommended Actions</h2>
+<ol>
+  <li><strong>Investigate routes that have already exceeded their full-season benchmark.</strong> The following routes consumed their entire annual allocation in January alone — routes that require further investigation:<ul><li>Route <strong>P-3A</strong>: 320.82 hrs billed in January against a 200-hr full-season benchmark (160.4% consumed). Over-benchmark hours this month alone: 120.82 hrs (est. $9,061–$12,082).</li> <li>Route <strong>P-1</strong>: 212.60 hrs billed in January against a 200-hr full-season benchmark (106.3% consumed). Over-benchmark hours this month alone: 12.60 hrs (est. $945–$1,260).</li> <li>Route <strong>J-3</strong>: 126.30 hrs billed in January against a 120-hr full-season benchmark (105.2% consumed). Over-benchmark hours this month alone: 6.30 hrs (est. $472–$630).</li></ul></li>
+  <li><strong>Monitor critical-pace routes closely for the remainder of the season.</strong> The following routes used 70–100% of their annual benchmark in January. At current intensity they will exhaust their allocations before season end:<ul><li>Route <strong>P-6</strong>: 94.5% of season budget in January (113.37 of 120 hrs). Remaining budget: 6.63 hrs for Feb–Apr.</li> <li>Route <strong>G-2</strong>: 91.5% of season budget in January (384.37 of 420 hrs). Remaining budget: 35.63 hrs for Feb–Apr.</li> <li>Route <strong>P-2</strong>: 90.2% of season budget in January (189.42 of 210 hrs). Remaining budget: 20.58 hrs for Feb–Apr.</li> <li>Route <strong>G-1</strong>: 89.9% of season budget in January (269.68 of 300 hrs). Remaining budget: 30.32 hrs for Feb–Apr.</li> <li>Route <strong>P-5</strong>: 74.6% of season budget in January (186.47 of 250 hrs). Remaining budget: 63.53 hrs for Feb–Apr.</li> <li>Route <strong>P-4</strong>: 74.2% of season budget in January (311.70 of 420 hrs). Remaining budget: 108.30 hrs for Feb–Apr.</li> <li>Route <strong>AYR-2F</strong>: 71.5% of season budget in January (186.00 of 260 hrs). Remaining budget: 74.00 hrs for Feb–Apr.</li></ul></li>
+  <li><strong>Contractor to respond to the 46 flagged billing group(s) (Section 3).</strong> Gross excess: 120.05 hrs (est. $9,004–$12,005). For each group: (a) confirm deduplication is correct and issue a credit note, or (b) provide operational documentation demonstrating the hours are distinct and separately billable. Note: the net variance (+3.63 hrs) is not a settlement figure — see Section 5.</li>
+  <li><strong>Reconcile zero-activity routes against unmatched billing codes.</strong> 11 contract routes recorded no January hours (AC-2B, WK-1C, WK-2C, W-3A, W-3B, W-3C, W-4A, W-4B, W-4C, AYR-1C, AYR-2D), yet 256.85 hrs appear under unmatched codes (W3/W4, G3, —, K1, P3, G2A, S1/S2, W6/W7…). These hours may belong to the zero-activity routes entered under abbreviated or combined codes. Contractor should resubmit corrected route codes before final settlement.</li>
+  <li><strong>Clarify routes with minimal January activity.</strong> Routes NH-2, NH-1, S-2, S-3, S-1 recorded less than 5% of their season benchmark in the peak winter month. Contractor should confirm whether service was provided and, if so, whether hours were billed under a different route code.</li>
+</ol>
+
+<div class="callout info" style="margin-top:18px;">
+  <strong>Methodology.</strong> Audited hours apply the contract deduplication rules: gaps ≤ 60 min = continuous; gaps 61–180 min = first 60 min only; gaps &gt; 180 min = new event; 30-min refuel/event allowance. This report does not constitute a final billing determination.
+</div>
+
+</body>
+</html>
